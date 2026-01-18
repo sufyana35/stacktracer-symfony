@@ -176,6 +176,16 @@ class HttpTransport implements TransportInterface
 
     private function doHttpRequest(string $body, array $headers): array
     {
+        // Use cURL if available, otherwise fall back to file_get_contents
+        if (function_exists('curl_init')) {
+            return $this->doHttpRequestCurl($body, $headers);
+        }
+
+        return $this->doHttpRequestStream($body, $headers);
+    }
+
+    private function doHttpRequestCurl(string $body, array $headers): array
+    {
         $ch = curl_init($this->endpoint);
 
         curl_setopt_array($ch, [
@@ -195,6 +205,41 @@ class HttpTransport implements TransportInterface
 
         if ($error) {
             throw new \RuntimeException('cURL error: ' . $error);
+        }
+
+        return [
+            'status' => $status,
+            'body' => $response,
+        ];
+    }
+
+    private function doHttpRequestStream(string $body, array $headers): array
+    {
+        $headerString = implode("\r\n", $headers);
+
+        $context = stream_context_create([
+            'http' => [
+                'method' => 'POST',
+                'header' => $headerString,
+                'content' => $body,
+                'timeout' => $this->timeout,
+                'ignore_errors' => true,
+            ],
+        ]);
+
+        $response = @file_get_contents($this->endpoint, false, $context);
+
+        if ($response === false) {
+            $error = error_get_last();
+            throw new \RuntimeException('HTTP error: ' . ($error['message'] ?? 'Unknown error'));
+        }
+
+        // Parse status from $http_response_header
+        $status = 0;
+        if (isset($http_response_header[0])) {
+            if (preg_match('/HTTP\/[\d.]+\s+(\d+)/', $http_response_header[0], $matches)) {
+                $status = (int) $matches[1];
+            }
         }
 
         return [
