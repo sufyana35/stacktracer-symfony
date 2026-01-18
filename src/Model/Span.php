@@ -357,57 +357,80 @@ class Span implements \JsonSerializable
         return $this;
     }
 
-    public function jsonSerialize(): array
+    /**
+     * @param bool $deduplicate If true, exclude attributes that duplicate trace-level request data
+     */
+    public function jsonSerialize(bool $deduplicate = false): array
     {
-        // Build compact events (remove redundant stacktrace text if we have structured data)
-        $events = array_map(function($e) {
-            $data = $e->jsonSerialize();
-            // Remove verbose stacktrace string - we have structured trace at trace level
-            if (isset($data['attributes']['exception.stacktrace'])) {
-                unset($data['attributes']['exception.stacktrace']);
-            }
-            return $data;
-        }, $this->events);
-
-        return [
-            // OTEL Core Fields
-            'trace_id' => $this->getTraceId(),
+        // Core fields always present
+        $data = [
             'span_id' => $this->getSpanId(),
-            'parent_span_id' => $this->parentSpanId,
             'name' => $this->name,
             'kind' => $this->kind,
-            'start_time_unix_nano' => (int)($this->startTime * 1e9),
-            'end_time_unix_nano' => $this->endTime ? (int)($this->endTime * 1e9) : null,
-            'duration_ms' => $this->getDurationMs(),
-            
-            // Status
-            'status' => [
-                'code' => $this->status,
-                'message' => $this->statusMessage,
-            ],
-            
-            // Attributes
-            'attributes' => $this->attributes,
-            
-            // Events (exception events without verbose stacktrace)
-            'events' => $events,
-            
-            // Links
-            'links' => array_map(fn($l) => $l->jsonSerialize(), $this->links),
-            
-            // Resource
-            'resource' => [
-                'service.name' => $this->serviceName,
-                'service.version' => $this->serviceVersion,
-                ...$this->resource,
-            ],
-            
-            // Linking metadata (IDs only - full data at trace level)
-            'breadcrumb_ids' => array_map(fn($b) => $b->getId(), $this->breadcrumbs),
-            'log_ids' => array_map(fn($l) => $l->getId(), $this->logs),
-            'breadcrumb_count' => count($this->breadcrumbs),
-            'log_count' => count($this->logs),
-            'fingerprint' => $this->fingerprint,
+            'start_ts' => (int)($this->startTime * 1e9),
+            'status' => $this->status,
         ];
+        
+        // Only include parent if set
+        if ($this->parentSpanId !== null) {
+            $data['parent_span_id'] = $this->parentSpanId;
+        }
+        
+        // Only include end time and duration if ended
+        if ($this->endTime !== null) {
+            $data['end_ts'] = (int)($this->endTime * 1e9);
+            $data['duration_ms'] = $this->getDurationMs();
+        }
+        
+        // Status message only if set
+        if ($this->statusMessage !== null) {
+            $data['status_msg'] = $this->statusMessage;
+        }
+        
+        // Attributes - optionally deduplicate from trace-level request data
+        $attrs = $this->attributes;
+        if ($deduplicate) {
+            // Remove attributes that are already in trace.request
+            $duplicateKeys = [
+                'http.url', 'http.method', 'http.target', 'http.host',
+                'http.scheme', 'http.user_agent', 'http.client_ip',
+            ];
+            foreach ($duplicateKeys as $key) {
+                unset($attrs[$key]);
+            }
+        }
+        if (!empty($attrs)) {
+            $data['attrs'] = $attrs;
+        }
+        
+        // Events - only if present, compact format
+        if (!empty($this->events)) {
+            $data['events'] = array_map(function($e) {
+                $eventData = $e->jsonSerialize();
+                // Remove verbose stacktrace string
+                if (isset($eventData['attributes']['exception.stacktrace'])) {
+                    unset($eventData['attributes']['exception.stacktrace']);
+                }
+                return $eventData;
+            }, $this->events);
+        }
+        
+        // Links - only if present
+        if (!empty($this->links)) {
+            $data['links'] = array_map(fn($l) => $l->jsonSerialize(), $this->links);
+        }
+        
+        // Resource - compact
+        $data['svc'] = $this->serviceName;
+        if ($this->serviceVersion !== '0.0.0') {
+            $data['svc_ver'] = $this->serviceVersion;
+        }
+        
+        // Fingerprint only if set
+        if ($this->fingerprint !== null) {
+            $data['fingerprint'] = $this->fingerprint;
+        }
+
+        return $data;
     }
 }

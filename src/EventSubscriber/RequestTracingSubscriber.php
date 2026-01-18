@@ -190,11 +190,35 @@ class RequestTracingSubscriber implements EventSubscriberInterface
         }
     }
 
+    /**
+     * Essential headers to capture (allowlist for optimization)
+     */
+    private const ESSENTIAL_HEADERS = [
+        'host',
+        'user-agent',
+        'content-type',
+        'content-length',
+        'accept',
+        'accept-language',
+        'authorization',  // Will be redacted by sensitive keys
+        'x-request-id',
+        'x-correlation-id',
+        'x-forwarded-for',
+        'x-real-ip',
+        'referer',
+        'origin',
+    ];
+
     private function compactHeaders(array $headers): array
     {
         $compacted = [];
         foreach ($headers as $name => $values) {
             if (empty($values)) {
+                continue;
+            }
+            // Only include essential headers
+            $lowerName = strtolower($name);
+            if (!in_array($lowerName, self::ESSENTIAL_HEADERS, true)) {
                 continue;
             }
             $compacted[$name] = count($values) === 1 ? $values[0] : $values;

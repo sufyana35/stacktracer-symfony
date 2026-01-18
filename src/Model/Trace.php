@@ -361,48 +361,66 @@ class Trace implements \JsonSerializable
             $this->computeGroupKey();
         }
 
-        return [
+        // Build base data with only non-empty fields
+        $data = [
             'id' => $this->id,
             'type' => $this->type,
             'level' => $this->level,
             'message' => $this->message,
-            'context' => $this->context,
-            'tags' => $this->tags,
             
-            // Request/Exception/Performance data
-            'request' => $this->request,
-            'exception' => $this->exception,
-            'performance' => $this->performance,
-            
-            // Timestamps
-            'timestamp' => $this->timestamp,
-            'timestamp_unix_nano' => (int)($this->timestamp * 1e9),
-            'datetime' => date('Y-m-d\TH:i:s.vP', (int) $this->timestamp),
-            'duration_ms' => $this->duration !== null ? round($this->duration * 1000, 3) : null,
+            // Single timestamp format (unix nano) - receiver can derive others
+            'ts' => (int)($this->timestamp * 1e9),
             
             // OTEL Trace Context
             'trace_id' => $this->traceId,
-            'span_id' => $this->spanId,
-            'parent_span_id' => $this->parentSpanId,
-            
-            // Linked data with counts for frontend
-            'breadcrumbs' => array_map(fn($b) => $b instanceof Breadcrumb ? $b->jsonSerialize() : $b, $this->breadcrumbs),
-            'breadcrumb_count' => count($this->breadcrumbs),
-            
-            'logs' => array_map(fn($l) => $l instanceof LogEntry ? $l->jsonSerialize() : $l, $this->logs),
-            'log_count' => count($this->logs),
-            
-            'spans' => array_map(fn($s) => $s instanceof Span ? $s->jsonSerialize() : $s, $this->spans),
-            'span_count' => count($this->spans),
             
             // Fingerprinting for deduplication and grouping
             'fingerprint' => $this->fingerprint,
             'group_key' => $this->groupKey,
-            
-            // Breadcrumb trail fingerprint for pattern detection
-            'breadcrumb_fingerprint' => count($this->breadcrumbs) > 0 
-                ? Fingerprint::breadcrumbTrail($this->breadcrumbs) 
-                : null,
         ];
+        
+        // Only include non-empty arrays/values
+        if (!empty($this->context)) {
+            $data['context'] = $this->context;
+        }
+        if (!empty($this->tags)) {
+            $data['tags'] = $this->tags;
+        }
+        if ($this->request !== null) {
+            $data['request'] = $this->request;
+        }
+        if ($this->exception !== null) {
+            $data['exception'] = $this->exception;
+        }
+        if ($this->performance !== null) {
+            $data['performance'] = $this->performance;
+        }
+        if ($this->duration !== null) {
+            $data['duration_ms'] = round($this->duration * 1000, 3);
+        }
+        if ($this->spanId !== null) {
+            $data['span_id'] = $this->spanId;
+        }
+        if ($this->parentSpanId !== null) {
+            $data['parent_span_id'] = $this->parentSpanId;
+        }
+        
+        // Only include breadcrumbs if present
+        if (!empty($this->breadcrumbs)) {
+            $data['breadcrumbs'] = array_map(fn($b) => $b instanceof Breadcrumb ? $b->jsonSerialize() : $b, $this->breadcrumbs);
+            $data['breadcrumb_fingerprint'] = Fingerprint::breadcrumbTrail($this->breadcrumbs);
+        }
+        
+        // Only include logs if present
+        if (!empty($this->logs)) {
+            $data['logs'] = array_map(fn($l) => $l instanceof LogEntry ? $l->jsonSerialize() : $l, $this->logs);
+        }
+        
+        // Only include spans if present - with deduplication flag
+        if (!empty($this->spans)) {
+            $data['spans'] = array_map(fn($s) => $s instanceof Span ? $s->jsonSerialize(true) : $s, $this->spans);
+        }
+
+        return $data;
     }
 }

@@ -170,27 +170,58 @@ class Breadcrumb implements \JsonSerializable
 
     public function jsonSerialize(): array
     {
-        return [
+        $data = [
             'id' => $this->id,
-            'category' => $this->category,
-            'message' => $this->message,
-            'level' => $this->level,
-            'data' => $this->data,
-            'timestamp' => $this->timestamp,
-            'time_unix_nano' => (int)($this->timestamp * 1e9),
-            
-            // Linking
-            'span_id' => $this->spanId,
-            'trace_id' => $this->traceId,
-            
-            // Source
-            'source' => $this->sourceFile ? [
+            'cat' => $this->category,
+            'msg' => $this->message,
+            'lvl' => $this->level,
+            'ts' => (int)($this->timestamp * 1e9),
+        ];
+        
+        // Only include data if non-empty
+        if (!empty($this->data)) {
+            $data['data'] = $this->data;
+        }
+        
+        // Only include span_id if set
+        if ($this->spanId !== null) {
+            $data['span_id'] = $this->spanId;
+        }
+        
+        // Only include source if it's meaningful (not framework internals)
+        if ($this->sourceFile !== null && !$this->isFrameworkSource()) {
+            $data['src'] = [
                 'file' => $this->sourceFile,
                 'line' => $this->sourceLine,
-                'function' => $this->sourceFunction,
-            ] : null,
-            
-            'fingerprint' => $this->getFingerprint(),
+            ];
+            if ($this->sourceFunction !== null) {
+                $data['src']['fn'] = $this->sourceFunction;
+            }
+        }
+        
+        return $data;
+    }
+    
+    /**
+     * Check if source is a framework/vendor file (not useful to show)
+     */
+    private function isFrameworkSource(): bool
+    {
+        if ($this->sourceFile === null) {
+            return false;
+        }
+        // Skip vendor and common framework paths
+        $skipPatterns = [
+            '/vendor/',
+            '/var/cache/',
+            'EventDispatcher',
+            'HttpKernel',
         ];
+        foreach ($skipPatterns as $pattern) {
+            if (str_contains($this->sourceFile, $pattern)) {
+                return true;
+            }
+        }
+        return false;
     }
 }
