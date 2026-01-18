@@ -144,6 +144,22 @@ class TracingService
     }
 
     /**
+     * Check if an exception has already been recorded.
+     */
+    public function isExceptionRecorded(\Throwable $e): bool
+    {
+        return $this->spanManager->isExceptionRecorded($e);
+    }
+
+    /**
+     * Mark an exception as recorded.
+     */
+    public function markExceptionRecorded(\Throwable $e, string $spanId): void
+    {
+        $this->spanManager->markExceptionRecorded($e, $spanId);
+    }
+
+    /**
      * Execute a callback within a span.
      */
     public function withSpan(string $name, callable $callback, string $kind = Span::KIND_INTERNAL): mixed
@@ -401,6 +417,18 @@ class TracingService
         // Attach spans to exception trace
         $trace->setSpans($this->spanManager->getSpans());
 
+        // If we're in an active request trace, attach exception to it instead of sending separately
+        if ($this->currentTrace !== null) {
+            // Attach exception data to the current request trace
+            $this->currentTrace->setException($exceptionData);
+            $this->currentTrace->setLevel(Trace::LEVEL_ERROR);
+            $this->currentTrace->setFingerprint($exceptionData['fingerprint']);
+            $this->currentTrace->setGroupKey($exceptionData['group_key']);
+            // Don't send - will be sent with endTrace()
+            return $trace;
+        }
+
+        // Only send standalone exception trace if no request trace is active
         if ($this->enabled) {
             $this->transport->send($trace);
         }

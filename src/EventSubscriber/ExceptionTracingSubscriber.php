@@ -60,13 +60,15 @@ class ExceptionTracingSubscriber implements EventSubscriberInterface
             'user_agent' => $request->headers->get('User-Agent'),
         ]);
 
-        // Record exception in current span (if exists)
+        // Record exception in current span ONLY if not already recorded
+        // (SpanManager::withSpan already records exceptions when they bubble up)
         $currentSpan = $this->tracing->getCurrentSpan();
-        if ($currentSpan) {
+        if ($currentSpan && !$this->tracing->isExceptionRecorded($exception)) {
             $currentSpan->recordException($exception, [
                 'http.url' => $request->getUri(),
                 'http.route' => $request->attributes->get('_route'),
             ]);
+            $this->tracing->markExceptionRecorded($exception, $currentSpan->getSpanId());
         }
     }
 }

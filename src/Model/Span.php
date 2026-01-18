@@ -359,6 +359,16 @@ class Span implements \JsonSerializable
 
     public function jsonSerialize(): array
     {
+        // Build compact events (remove redundant stacktrace text if we have structured data)
+        $events = array_map(function($e) {
+            $data = $e->jsonSerialize();
+            // Remove verbose stacktrace string - we have structured trace at trace level
+            if (isset($data['attributes']['exception.stacktrace'])) {
+                unset($data['attributes']['exception.stacktrace']);
+            }
+            return $data;
+        }, $this->events);
+
         return [
             // OTEL Core Fields
             'trace_id' => $this->getTraceId(),
@@ -379,8 +389,8 @@ class Span implements \JsonSerializable
             // Attributes
             'attributes' => $this->attributes,
             
-            // Events
-            'events' => array_map(fn($e) => $e->jsonSerialize(), $this->events),
+            // Events (exception events without verbose stacktrace)
+            'events' => $events,
             
             // Links
             'links' => array_map(fn($l) => $l->jsonSerialize(), $this->links),
@@ -392,17 +402,12 @@ class Span implements \JsonSerializable
                 ...$this->resource,
             ],
             
-            // Stacktracer Extensions (linked data)
-            '_stacktracer' => [
-                'breadcrumbs' => array_map(fn($b) => $b->jsonSerialize(), $this->breadcrumbs),
-                'logs' => array_map(fn($l) => $l->jsonSerialize(), $this->logs),
-                'stack_trace' => $this->stackTrace 
-                    ? array_map(fn($f) => $f->jsonSerialize(), $this->stackTrace) 
-                    : null,
-                'fingerprint' => $this->fingerprint,
-                'breadcrumb_count' => count($this->breadcrumbs),
-                'log_count' => count($this->logs),
-            ],
+            // Linking metadata (IDs only - full data at trace level)
+            'breadcrumb_ids' => array_map(fn($b) => $b->getId(), $this->breadcrumbs),
+            'log_ids' => array_map(fn($l) => $l->getId(), $this->logs),
+            'breadcrumb_count' => count($this->breadcrumbs),
+            'log_count' => count($this->logs),
+            'fingerprint' => $this->fingerprint,
         ];
     }
 }

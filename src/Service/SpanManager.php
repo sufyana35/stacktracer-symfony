@@ -17,6 +17,9 @@ class SpanManager
     /** @var Span[] All spans in current trace */
     private array $spans = [];
     
+    /** @var \SplObjectStorage Tracks exceptions already recorded */
+    private \SplObjectStorage $recordedExceptions;
+    
     private ?SpanContext $rootContext = null;
     private string $serviceName;
     private string $serviceVersion;
@@ -27,6 +30,7 @@ class SpanManager
     ) {
         $this->serviceName = $serviceName;
         $this->serviceVersion = $serviceVersion;
+        $this->recordedExceptions = new \SplObjectStorage();
     }
 
     /**
@@ -169,6 +173,23 @@ class SpanManager
         $this->spanStack = [];
         $this->spans = [];
         $this->rootContext = null;
+        $this->recordedExceptions = new \SplObjectStorage();
+    }
+
+    /**
+     * Check if an exception has already been recorded.
+     */
+    public function isExceptionRecorded(\Throwable $e): bool
+    {
+        return $this->recordedExceptions->contains($e);
+    }
+
+    /**
+     * Mark an exception as recorded.
+     */
+    public function markExceptionRecorded(\Throwable $e, string $spanId): void
+    {
+        $this->recordedExceptions->attach($e, $spanId);
     }
 
     /**
@@ -183,7 +204,11 @@ class SpanManager
             $span->setOk();
             return $result;
         } catch (\Throwable $e) {
-            $span->recordException($e);
+            // Only record exception if not already recorded (prevents duplicates on bubble-up)
+            if (!$this->recordedExceptions->contains($e)) {
+                $span->recordException($e);
+                $this->recordedExceptions->attach($e, $span->getSpanId());
+            }
             throw $e;
         } finally {
             $this->endSpan($span);
