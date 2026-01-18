@@ -50,3 +50,19 @@ stacktracer:
             - api_key
             - authorization
             - cookie
+
+    # Service identification (OTEL/distributed tracing)
+    service:
+        name: '%env(default::STACKTRACER_SERVICE_NAME)%'    # e.g., 'my-api', 'user-service'
+        version: '%env(default::STACKTRACER_SERVICE_VERSION)%'  # e.g., '1.2.3', 'v2.0.0'
+
+    # Monolog integration
+    logging:
+        enabled: true                # Capture logs and link to spans
+        level: debug                 # Minimum level: debug, info, warning, error
+        capture_context: true        # Include log context in trace
+        exclude_channels:            # Channels to ignore
+            - event
+            - doctrine
+            - authorization
+            - cookie

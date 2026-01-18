@@ -2,8 +2,14 @@
 
 namespace Stacktracer\SymfonyBundle\Service;
 
+use Stacktracer\SymfonyBundle\Model\Breadcrumb;
+use Stacktracer\SymfonyBundle\Model\LogEntry;
+use Stacktracer\SymfonyBundle\Model\Span;
+use Stacktracer\SymfonyBundle\Model\SpanContext;
+use Stacktracer\SymfonyBundle\Model\StackFrame;
 use Stacktracer\SymfonyBundle\Model\Trace;
 use Stacktracer\SymfonyBundle\Transport\TransportInterface;
+use Stacktracer\SymfonyBundle\Util\Fingerprint;
 
 /**
  * Main tracing service - the Stacktracer SDK.
@@ -24,6 +30,7 @@ use Stacktracer\SymfonyBundle\Transport\TransportInterface;
 class TracingService
 {
     private TransportInterface $transport;
+    private SpanManager $spanManager;
     private ?Trace $currentTrace = null;
     private array $globalTags = [];
     private array $globalContext = [];
@@ -37,6 +44,8 @@ class TracingService
     private bool $captureRequestHeaders;
     private array $sensitiveKeys;
     private ?string $projectDir = null;
+    private string $serviceName;
+    private string $serviceVersion;
 
     public function __construct(
         TransportInterface $transport,
@@ -48,7 +57,9 @@ class TracingService
         bool $captureCodeContext = true,
         bool $filterVendorFrames = true,
         bool $captureRequestHeaders = true,
-        array $sensitiveKeys = ['password', 'token', 'secret', 'api_key', 'authorization', 'cookie']
+        array $sensitiveKeys = ['password', 'token', 'secret', 'api_key', 'authorization', 'cookie'],
+        string $serviceName = 'unknown',
+        string $serviceVersion = '0.0.0'
     ) {
         $this->transport = $transport;
         $this->enabled = $enabled;
@@ -60,11 +71,133 @@ class TracingService
         $this->filterVendorFrames = $filterVendorFrames;
         $this->captureRequestHeaders = $captureRequestHeaders;
         $this->sensitiveKeys = array_map('strtolower', $sensitiveKeys);
+        $this->serviceName = $serviceName;
+        $this->serviceVersion = $serviceVersion;
+        $this->spanManager = new SpanManager($serviceName, $serviceVersion);
     }
 
     public function isEnabled(): bool
     {
         return $this->enabled;
+    }
+
+    // ========================================
+    // SPAN MANAGEMENT (OTEL-compatible)
+    // ========================================
+
+    /**
+     * Get the span manager for advanced span operations.
+     */
+    public function getSpanManager(): SpanManager
+    {
+        return $this->spanManager;
+    }
+
+    /**
+     * Start a new span within the current trace.
+     */
+    public function startSpan(string $name, string $kind = Span::KIND_INTERNAL): Span
+    {
+        $span = $this->spanManager->startSpan($name, $kind);
+        
+        // Sync trace context
+        if ($this->currentTrace) {
+            $this->currentTrace->setSpanId($span->getSpanId());
+        }
+        
+        return $span;
+    }
+
+    /**
+     * End the current span.
+     */
+    public function endSpan(?Span $span = null): ?Span
+    {
+        return $this->spanManager->endSpan($span);
+    }
+
+    /**
+     * Get current span.
+     */
+    public function getCurrentSpan(): ?Span
+    {
+        return $this->spanManager->getCurrentSpan();
+    }
+
+    /**
+     * Get current trace ID.
+     */
+    public function getCurrentTraceId(): ?string
+    {
+        if ($this->currentTrace) {
+            return $this->currentTrace->getTraceId();
+        }
+        return $this->spanManager->getCurrentTraceId();
+    }
+
+    /**
+     * Get current span ID.
+     */
+    public function getCurrentSpanId(): ?string
+    {
+        return $this->spanManager->getCurrentSpanId();
+    }
+
+    /**
+     * Execute a callback within a span.
+     */
+    public function withSpan(string $name, callable $callback, string $kind = Span::KIND_INTERNAL): mixed
+    {
+        return $this->spanManager->withSpan($name, $callback, $kind);
+    }
+
+    /**
+     * Set root context from incoming traceparent header.
+     */
+    public function setIncomingContext(string $traceparent): void
+    {
+        $context = SpanContext::fromTraceparent($traceparent);
+        if ($context) {
+            $this->spanManager->setRootContext($context);
+            if ($this->currentTrace) {
+                $this->currentTrace->setTraceId($context->getTraceId());
+                $this->currentTrace->setParentSpanId($context->getSpanId());
+            }
+        }
+    }
+
+    /**
+     * Get traceparent header for outgoing requests.
+     */
+    public function getTraceparent(): ?string
+    {
+        return $this->spanManager->getTraceparent();
+    }
+
+    /**
+     * Add a log entry to the current span/trace.
+     */
+    public function addLogEntry(LogEntry $entry): void
+    {
+        $span = $this->spanManager->getCurrentSpan();
+        
+        if ($span) {
+            $span->addLog($entry);
+        }
+        
+        if ($this->currentTrace) {
+            $this->currentTrace->addLog($entry);
+        }
+    }
+
+    /**
+     * Create and add a log entry.
+     */
+    public function log(string $message, string $level = 'info', array $context = []): LogEntry
+    {
+        $entry = new LogEntry($message, $level, $context);
+        $this->addLogEntry($entry);
+        return $entry;
     }
 
     public function shouldSample(): bool
@@ -122,6 +255,12 @@ class TracingService
             $this->currentTrace->addTag($key, $value);
         }
 
+        // Sync trace ID with span manager
+        $rootContext = $this->spanManager->getRootContext();
+        if ($rootContext) {
+            $this->currentTrace->setTraceId($rootContext->getTraceId());
+        }
+
         return $this->currentTrace;
     }
 
@@ -133,14 +272,25 @@ class TracingService
     public function endTrace(): void
     {
         if ($this->currentTrace === null || !$this->enabled) {
+            $this->spanManager->clear();
             return;
         }
 
         $duration = microtime(true) - $this->currentTrace->getTimestamp();
         $this->currentTrace->setDuration($duration);
 
+        // Attach all spans to the trace
+        $this->currentTrace->setSpans($this->spanManager->getSpans());
+
+        // Compute fingerprints for deduplication
+        $this->currentTrace->computeFingerprint();
+        $this->currentTrace->computeGroupKey();
+
         $this->transport->send($this->currentTrace);
         $this->transport->flush();
+        
+        // Clear state
+        $this->spanManager->clear();
         $this->currentTrace = null;
     }
 
@@ -157,6 +307,7 @@ class TracingService
             $trace->addTag($key, $value);
         }
 
+        // Capture code context at exception location
         $codeContext = [];
         if ($this->captureCodeContext && is_file($exception->getFile())) {
             $codeContext = $this->extractCodeContext(
@@ -166,13 +317,31 @@ class TracingService
             );
         }
 
+        // Build stack frames with fingerprinting
+        $stackFrames = StackFrame::fromException($exception, $this->filterVendorFrames, $this->maxStackFrames);
+        $stackFingerprint = StackFrame::computeStackFingerprint($stackFrames);
+        $stackGroupKey = StackFrame::computeStackGroupKey($stackFrames);
+
+        // Add code context to frames
+        if ($this->captureCodeContext) {
+            foreach ($stackFrames as $frame) {
+                if (!$frame->isVendor() && $frame->getFile() !== '[internal]' && is_file($frame->getFile())) {
+                    $frame->setCodeContext(
+                        $this->extractCodeContext($frame->getFile(), $frame->getLine(), $this->stacktraceContextLines)
+                    );
+                }
+            }
+        }
+
         $exceptionData = [
             'cls' => get_class($exception),
             'msg' => $exception->getMessage(),
             'code' => $exception->getCode(),
             'file' => $this->shortenPath($exception->getFile()),
             'line' => $exception->getLine(),
-            'trace' => $this->formatStackTrace($exception),
+            'trace' => array_map(fn($f) => $f->jsonSerialize(), $stackFrames),
+            'stack_fingerprint' => $stackFingerprint,
+            'stack_group_key' => $stackGroupKey,
         ];
 
         if (!empty($codeContext)) {
@@ -186,17 +355,51 @@ class TracingService
             ];
         }
 
+        // Compute exception fingerprint for deduplication
+        $exceptionData['fingerprint'] = Fingerprint::exception($exception);
+        $exceptionData['group_key'] = Fingerprint::exceptionGroup($exception);
+
         $trace->setException($exceptionData);
+        $trace->setFingerprint($exceptionData['fingerprint']);
+        $trace->setGroupKey($exceptionData['group_key']);
+
+        // Sync trace ID with span manager
+        if ($this->spanManager->getCurrentTraceId()) {
+            $trace->setTraceId($this->spanManager->getCurrentTraceId());
+        }
+        if ($this->spanManager->getCurrentSpanId()) {
+            $trace->setSpanId($this->spanManager->getCurrentSpanId());
+        }
+
+        // Record exception in current span if exists
+        $currentSpan = $this->spanManager->getCurrentSpan();
+        if ($currentSpan) {
+            $currentSpan->recordException($exception);
+        }
 
         if ($this->currentTrace !== null) {
-            $reflection = new \ReflectionClass($trace);
-            $bcProp = $reflection->getProperty('breadcrumbs');
-            $bcProp->setValue($trace, $this->currentTrace->getBreadcrumbs());
+            // Copy breadcrumbs from current trace
+            foreach ($this->currentTrace->getBreadcrumbs() as $bc) {
+                $trace->addBreadcrumbObject($bc instanceof Breadcrumb ? $bc : new Breadcrumb(
+                    $bc['category'] ?? 'default',
+                    $bc['message'] ?? '',
+                    $bc['level'] ?? Breadcrumb::LEVEL_INFO,
+                    $bc['data'] ?? []
+                ));
+            }
+
+            // Copy logs from current trace
+            foreach ($this->currentTrace->getLogs() as $log) {
+                $trace->addLog($log);
+            }
 
             if ($this->currentTrace->getRequest()) {
                 $trace->setRequest($this->currentTrace->getRequest());
             }
         }
+
+        // Attach spans to exception trace
+        $trace->setSpans($this->spanManager->getSpans());
 
         if ($this->enabled) {
             $this->transport->send($trace);
@@ -218,11 +421,37 @@ class TracingService
             $trace->addTag($key, $value);
         }
 
-        if ($this->currentTrace !== null) {
-            $reflection = new \ReflectionClass($trace);
-            $bcProp = $reflection->getProperty('breadcrumbs');
-            $bcProp->setValue($trace, $this->currentTrace->getBreadcrumbs());
+        // Sync trace ID with span manager
+        if ($this->spanManager->getCurrentTraceId()) {
+            $trace->setTraceId($this->spanManager->getCurrentTraceId());
         }
+        if ($this->spanManager->getCurrentSpanId()) {
+            $trace->setSpanId($this->spanManager->getCurrentSpanId());
+        }
+
+        // Compute fingerprint
+        $trace->setFingerprint(Fingerprint::logMessage($message, null, $level));
+        $trace->computeGroupKey();
+
+        if ($this->currentTrace !== null) {
+            // Copy breadcrumbs from current trace
+            foreach ($this->currentTrace->getBreadcrumbs() as $bc) {
+                $trace->addBreadcrumbObject($bc instanceof Breadcrumb ? $bc : new Breadcrumb(
+                    $bc['category'] ?? 'default',
+                    $bc['message'] ?? '',
+                    $bc['level'] ?? Breadcrumb::LEVEL_INFO,
+                    $bc['data'] ?? []
+                ));
+            }
+
+            // Copy logs from current trace
+            foreach ($this->currentTrace->getLogs() as $log) {
+                $trace->addLog($log);
+            }
+        }
+
+        // Attach spans
+        $trace->setSpans($this->spanManager->getSpans());
 
         if ($this->enabled) {
             $this->transport->send($trace);
@@ -231,11 +460,41 @@ class TracingService
         return $trace;
     }
 
-    public function addBreadcrumb(string $category, string $message, array $data = []): void
+    public function addBreadcrumb(string $category, string $message, array $data = [], string $level = Breadcrumb::LEVEL_INFO): void
     {
-        if ($this->currentTrace !== null) {
-            $this->currentTrace->addBreadcrumb($category, $message, $data);
+        $breadcrumb = new Breadcrumb($category, $message, $level, $data);
+        $breadcrumb->captureSource(2);
+
+        // Add to current span
+        $currentSpan = $this->spanManager->getCurrentSpan();
+        if ($currentSpan) {
+            $currentSpan->addBreadcrumb($breadcrumb);
         }
+
+        // Add to current trace
+        if ($this->currentTrace !== null) {
+            $this->currentTrace->addBreadcrumbObject($breadcrumb);
+        }
+    }
+
+    /**
+     * Create a breadcrumb linked to the current span.
+     */
+    public function breadcrumb(string $category, string $message, string $level = Breadcrumb::LEVEL_INFO, array $data = []): Breadcrumb
+    {
+        $breadcrumb = new Breadcrumb($category, $message, $level, $data);
+        $breadcrumb->captureSource(2);
+        
+        $currentSpan = $this->spanManager->getCurrentSpan();
+        if ($currentSpan) {
+            $currentSpan->addBreadcrumb($breadcrumb);
+        }
+        
+        if ($this->currentTrace !== null) {
+            $this->currentTrace->addBreadcrumbObject($breadcrumb);
+        }
+        
+        return $breadcrumb;
     }
 
     public function setTag(string $key, string $value): void

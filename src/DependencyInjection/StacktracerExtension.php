@@ -42,6 +42,18 @@ class StacktracerExtension extends Extension
         $container->setParameter('stacktracer.capture_request_headers', $config['performance']['capture_request_headers']);
         $container->setParameter('stacktracer.sensitive_keys', $config['performance']['sensitive_keys']);
 
+        // Service identification (OTEL)
+        $serviceName = $config['service']['name'] ?? 'unknown';
+        $serviceVersion = $config['service']['version'] ?? '0.0.0';
+        $container->setParameter('stacktracer.service_name', $serviceName ?: 'unknown');
+        $container->setParameter('stacktracer.service_version', $serviceVersion ?: '0.0.0');
+
+        // Logging settings
+        $container->setParameter('stacktracer.logging.enabled', $config['logging']['enabled']);
+        $container->setParameter('stacktracer.logging.level', $config['logging']['level']);
+        $container->setParameter('stacktracer.logging.capture_context', $config['logging']['capture_context']);
+        $container->setParameter('stacktracer.logging.exclude_channels', $config['logging']['exclude_channels']);
+
         $loader = new YamlFileLoader($container, new FileLocator(__DIR__ . '/../../config'));
         $loader->load('services.yaml');
     }

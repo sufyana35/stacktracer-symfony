@@ -1,0 +1,408 @@
+<?php
+
+namespace Stacktracer\SymfonyBundle\Model;
+
+/**
+ * OpenTelemetry-compatible Span representing a unit of work.
+ * 
+ * @see https://opentelemetry.io/docs/concepts/signals/traces/#spans
+ */
+class Span implements \JsonSerializable
+{
+    // OTEL Span Kinds
+    public const KIND_INTERNAL = 'INTERNAL';
+    public const KIND_SERVER = 'SERVER';
+    public const KIND_CLIENT = 'CLIENT';
+    public const KIND_PRODUCER = 'PRODUCER';
+    public const KIND_CONSUMER = 'CONSUMER';
+
+    // OTEL Span Status Codes
+    public const STATUS_UNSET = 'UNSET';
+    public const STATUS_OK = 'OK';
+    public const STATUS_ERROR = 'ERROR';
+
+    private SpanContext $context;
+    private ?string $parentSpanId;
+    private string $name;
+    private string $kind;
+    private float $startTime;
+    private ?float $endTime;
+    private string $status;
+    private ?string $statusMessage;
+    
+    /** @var array<string, mixed> OTEL attributes */
+    private array $attributes;
+    
+    /** @var SpanEvent[] */
+    private array $events;
+    
+    /** @var SpanLink[] */
+    private array $links;
+    
+    /** @var Breadcrumb[] Linked breadcrumbs */
+    private array $breadcrumbs;
+    
+    /** @var LogEntry[] Linked log entries */
+    private array $logs;
+    
+    /** @var StackFrame[]|null Stack trace if applicable */
+    private ?array $stackTrace;
+    
+    /** @var string|null Fingerprint for deduplication */
+    private ?string $fingerprint;
+
+    private string $serviceName;
+    private string $serviceVersion;
+    private array $resource;
+
+    public function __construct(
+        string $name,
+        string $kind = self::KIND_INTERNAL,
+        ?SpanContext $context = null,
+        ?string $parentSpanId = null,
+        string $serviceName = 'unknown',
+        string $serviceVersion = '0.0.0'
+    ) {
+        $this->context = $context ?? new SpanContext();
+        $this->parentSpanId = $parentSpanId;
+        $this->name = $name;
+        $this->kind = $kind;
+        $this->startTime = microtime(true);
+        $this->endTime = null;
+        $this->status = self::STATUS_UNSET;
+        $this->statusMessage = null;
+        $this->attributes = [];
+        $this->events = [];
+        $this->links = [];
+        $this->breadcrumbs = [];
+        $this->logs = [];
+        $this->stackTrace = null;
+        $this->fingerprint = null;
+        $this->serviceName = $serviceName;
+        $this->serviceVersion = $serviceVersion;
+        $this->resource = [];
+    }
+
+    public function getContext(): SpanContext
+    {
+        return $this->context;
+    }
+
+    public function getTraceId(): string
+    {
+        return $this->context->getTraceId();
+    }
+
+    public function getSpanId(): string
+    {
+        return $this->context->getSpanId();
+    }
+
+    public function getParentSpanId(): ?string
+    {
+        return $this->parentSpanId;
+    }
+
+    public function getName(): string
+    {
+        return $this->name;
+    }
+
+    public function setName(string $name): self
+    {
+        $this->name = $name;
+        return $this;
+    }
+
+    public function getKind(): string
+    {
+        return $this->kind;
+    }
+
+    public function getStartTime(): float
+    {
+        return $this->startTime;
+    }
+
+    public function getEndTime(): ?float
+    {
+        return $this->endTime;
+    }
+
+    public function getDurationMs(): ?float
+    {
+        if ($this->endTime === null) {
+            return null;
+        }
+        return round(($this->endTime - $this->startTime) * 1000, 3);
+    }
+
+    public function end(?float $endTime = null): self
+    {
+        $this->endTime = $endTime ?? microtime(true);
+        return $this;
+    }
+
+    public function isEnded(): bool
+    {
+        return $this->endTime !== null;
+    }
+
+    // --- Status ---
+
+    public function setStatus(string $status, ?string $message = null): self
+    {
+        $this->status = $status;
+        $this->statusMessage = $message;
+        return $this;
+    }
+
+    public function setOk(): self
+    {
+        return $this->setStatus(self::STATUS_OK);
+    }
+
+    public function setError(string $message = ''): self
+    {
+        return $this->setStatus(self::STATUS_ERROR, $message);
+    }
+
+    public function getStatus(): string
+    {
+        return $this->status;
+    }
+
+    public function getStatusMessage(): ?string
+    {
+        return $this->statusMessage;
+    }
+
+    // --- Attributes (OTEL semantic conventions) ---
+
+    public function setAttribute(string $key, mixed $value): self
+    {
+        $this->attributes[$key] = $value;
+        return $this;
+    }
+
+    public function setAttributes(array $attributes): self
+    {
+        foreach ($attributes as $key => $value) {
+            $this->setAttribute($key, $value);
+        }
+        return $this;
+    }
+
+    public function getAttribute(string $key): mixed
+    {
+        return $this->attributes[$key] ?? null;
+    }
+
+    public function getAttributes(): array
+    {
+        return $this->attributes;
+    }
+
+    // --- Events (timestamped annotations) ---
+
+    public function addEvent(string $name, array $attributes = [], ?float $timestamp = null): self
+    {
+        $this->events[] = new SpanEvent($name, $attributes, $timestamp);
+        return $this;
+    }
+
+    public function getEvents(): array
+    {
+        return $this->events;
+    }
+
+    // --- Links (to other spans/traces) ---
+
+    public function addLink(SpanContext $context, array $attributes = []): self
+    {
+        $this->links[] = new SpanLink($context, $attributes);
+        return $this;
+    }
+
+    public function getLinks(): array
+    {
+        return $this->links;
+    }
+
+    // --- Breadcrumbs ---
+
+    public function addBreadcrumb(Breadcrumb $breadcrumb): self
+    {
+        // Link breadcrumb to this span
+        $breadcrumb->setSpanId($this->getSpanId());
+        $breadcrumb->setTraceId($this->getTraceId());
+        $this->breadcrumbs[] = $breadcrumb;
+        return $this;
+    }
+
+    public function createBreadcrumb(
+        string $category,
+        string $message,
+        string $level = Breadcrumb::LEVEL_INFO,
+        array $data = []
+    ): Breadcrumb {
+        $breadcrumb = new Breadcrumb($category, $message, $level, $data);
+        $this->addBreadcrumb($breadcrumb);
+        return $breadcrumb;
+    }
+
+    public function getBreadcrumbs(): array
+    {
+        return $this->breadcrumbs;
+    }
+
+    // --- Logs ---
+
+    public function addLog(LogEntry $log): self
+    {
+        $log->setSpanId($this->getSpanId());
+        $log->setTraceId($this->getTraceId());
+        $this->logs[] = $log;
+        return $this;
+    }
+
+    public function getLogs(): array
+    {
+        return $this->logs;
+    }
+
+    // --- Stack Trace ---
+
+    /**
+     * @param StackFrame[] $stackTrace
+     */
+    public function setStackTrace(array $stackTrace): self
+    {
+        $this->stackTrace = $stackTrace;
+        $this->fingerprint = StackFrame::computeStackFingerprint($stackTrace);
+        return $this;
+    }
+
+    public function getStackTrace(): ?array
+    {
+        return $this->stackTrace;
+    }
+
+    public function getFingerprint(): ?string
+    {
+        return $this->fingerprint;
+    }
+
+    public function setFingerprint(string $fingerprint): self
+    {
+        $this->fingerprint = $fingerprint;
+        return $this;
+    }
+
+    // --- Resource/Service Info ---
+
+    public function setResource(array $resource): self
+    {
+        $this->resource = $resource;
+        return $this;
+    }
+
+    public function getResource(): array
+    {
+        return $this->resource;
+    }
+
+    public function getServiceName(): string
+    {
+        return $this->serviceName;
+    }
+
+    public function getServiceVersion(): string
+    {
+        return $this->serviceVersion;
+    }
+
+    // --- Child Span Creation ---
+
+    public function createChild(string $name, string $kind = self::KIND_INTERNAL): self
+    {
+        $childContext = $this->context->createChild();
+        return new self(
+            $name,
+            $kind,
+            $childContext,
+            $this->getSpanId(),
+            $this->serviceName,
+            $this->serviceVersion
+        );
+    }
+
+    // --- Record Exception ---
+
+    public function recordException(\Throwable $exception, array $additionalAttributes = []): self
+    {
+        $attributes = array_merge([
+            'exception.type' => get_class($exception),
+            'exception.message' => $exception->getMessage(),
+            'exception.stacktrace' => $exception->getTraceAsString(),
+        ], $additionalAttributes);
+
+        if ($exception->getCode() !== 0) {
+            $attributes['exception.code'] = $exception->getCode();
+        }
+
+        $this->addEvent('exception', $attributes);
+        $this->setError($exception->getMessage());
+
+        return $this;
+    }
+
+    public function jsonSerialize(): array
+    {
+        return [
+            // OTEL Core Fields
+            'trace_id' => $this->getTraceId(),
+            'span_id' => $this->getSpanId(),
+            'parent_span_id' => $this->parentSpanId,
+            'name' => $this->name,
+            'kind' => $this->kind,
+            'start_time_unix_nano' => (int)($this->startTime * 1e9),
+            'end_time_unix_nano' => $this->endTime ? (int)($this->endTime * 1e9) : null,
+            'duration_ms' => $this->getDurationMs(),
+            
+            // Status
+            'status' => [
+                'code' => $this->status,
+                'message' => $this->statusMessage,
+            ],
+            
+            // Attributes
+            'attributes' => $this->attributes,
+            
+            // Events
+            'events' => array_map(fn($e) => $e->jsonSerialize(), $this->events),
+            
+            // Links
+            'links' => array_map(fn($l) => $l->jsonSerialize(), $this->links),
+            
+            // Resource
+            'resource' => [
+                'service.name' => $this->serviceName,
+                'service.version' => $this->serviceVersion,
+                ...$this->resource,
+            ],
+            
+            // Stacktracer Extensions (linked data)
+            '_stacktracer' => [
+                'breadcrumbs' => array_map(fn($b) => $b->jsonSerialize(), $this->breadcrumbs),
+                'logs' => array_map(fn($l) => $l->jsonSerialize(), $this->logs),
+                'stack_trace' => $this->stackTrace 
+                    ? array_map(fn($f) => $f->jsonSerialize(), $this->stackTrace) 
+                    : null,
+                'fingerprint' => $this->fingerprint,
+                'breadcrumb_count' => count($this->breadcrumbs),
+                'log_count' => count($this->logs),
+            ],
+        ];
+    }
+}

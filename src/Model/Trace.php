@@ -2,8 +2,12 @@
 
 namespace Stacktracer\SymfonyBundle\Model;
 
+use Stacktracer\SymfonyBundle\Util\Fingerprint;
+
 /**
- * Represents a single trace entry.
+ * Represents a single trace entry with OTEL-compatible span data.
+ * 
+ * @see https://opentelemetry.io/docs/concepts/signals/traces/
  */
 class Trace implements \JsonSerializable
 {
@@ -24,12 +28,30 @@ class Trace implements \JsonSerializable
     private string $message;
     private array $context;
     private array $tags;
+    
+    /** @var Breadcrumb[] */
     private array $breadcrumbs;
+    
+    /** @var LogEntry[] */
+    private array $logs;
+    
+    /** @var Span[] */
+    private array $spans;
+    
     private ?array $request;
     private ?array $exception;
     private ?array $performance;
     private float $timestamp;
     private ?float $duration;
+    
+    // OTEL Trace Context
+    private ?string $traceId;
+    private ?string $spanId;
+    private ?string $parentSpanId;
+    
+    // Fingerprinting for deduplication
+    private ?string $fingerprint;
+    private ?string $groupKey;
 
     public function __construct(
         string $type = self::TYPE_CUSTOM,
@@ -44,11 +66,18 @@ class Trace implements \JsonSerializable
         $this->context = $context;
         $this->tags = [];
         $this->breadcrumbs = [];
+        $this->logs = [];
+        $this->spans = [];
         $this->request = null;
         $this->exception = null;
         $this->performance = null;
         $this->timestamp = microtime(true);
         $this->duration = null;
+        $this->traceId = SpanContext::generateTraceId();
+        $this->spanId = null;
+        $this->parentSpanId = null;
+        $this->fingerprint = null;
+        $this->groupKey = null;
     }
 
     private function generateId(): string
@@ -115,20 +144,167 @@ class Trace implements \JsonSerializable
         return $this->tags;
     }
 
-    public function addBreadcrumb(string $category, string $message, array $data = []): self
+    public function addBreadcrumb(string $category, string $message, array $data = [], string $level = Breadcrumb::LEVEL_INFO): self
     {
-        $this->breadcrumbs[] = [
-            'timestamp' => microtime(true),
-            'category' => $category,
-            'message' => $message,
-            'data' => $data,
-        ];
+        $breadcrumb = new Breadcrumb($category, $message, $level, $data);
+        $breadcrumb->setTraceId($this->traceId);
+        $breadcrumb->setSpanId($this->spanId);
+        $breadcrumb->captureSource(2);
+        $this->breadcrumbs[] = $breadcrumb;
+        return $this;
+    }
+
+    public function addBreadcrumbObject(Breadcrumb $breadcrumb): self
+    {
+        $breadcrumb->setTraceId($this->traceId);
+        if ($this->spanId) {
+            $breadcrumb->setSpanId($this->spanId);
+        }
+        $this->breadcrumbs[] = $breadcrumb;
         return $this;
     }
 
     public function getBreadcrumbs(): array
     {
         return $this->breadcrumbs;
+    }
+
+    // --- Logs ---
+
+    public function addLog(LogEntry $log): self
+    {
+        $log->setTraceId($this->traceId);
+        if ($this->spanId) {
+            $log->setSpanId($this->spanId);
+        }
+        $this->logs[] = $log;
+        return $this;
+    }
+
+    public function getLogs(): array
+    {
+        return $this->logs;
+    }
+
+    // --- Spans ---
+
+    public function addSpan(Span $span): self
+    {
+        $this->spans[] = $span;
+        return $this;
+    }
+
+    public function setSpans(array $spans): self
+    {
+        $this->spans = $spans;
+        return $this;
+    }
+
+    public function getSpans(): array
+    {
+        return $this->spans;
+    }
+
+    // --- OTEL Context ---
+
+    public function getTraceId(): string
+    {
+        return $this->traceId;
+    }
+
+    public function setTraceId(string $traceId): self
+    {
+        $this->traceId = $traceId;
+        return $this;
+    }
+
+    public function getSpanId(): ?string
+    {
+        return $this->spanId;
+    }
+
+    public function setSpanId(?string $spanId): self
+    {
+        $this->spanId = $spanId;
+        return $this;
+    }
+
+    public function getParentSpanId(): ?string
+    {
+        return $this->parentSpanId;
+    }
+
+    public function setParentSpanId(?string $parentSpanId): self
+    {
+        $this->parentSpanId = $parentSpanId;
+        return $this;
+    }
+
+    // --- Fingerprinting ---
+
+    public function getFingerprint(): ?string
+    {
+        return $this->fingerprint;
+    }
+
+    public function setFingerprint(string $fingerprint): self
+    {
+        $this->fingerprint = $fingerprint;
+        return $this;
+    }
+
+    public function getGroupKey(): ?string
+    {
+        return $this->groupKey;
+    }
+
+    public function setGroupKey(string $groupKey): self
+    {
+        $this->groupKey = $groupKey;
+        return $this;
+    }
+
+    /**
+     * Compute fingerprint based on exception data.
+     */
+    public function computeFingerprint(): string
+    {
+        if ($this->exception) {
+            $this->fingerprint = Fingerprint::composite([
+                $this->exception['cls'] ?? '',
+                Fingerprint::normalizeMessage($this->exception['msg'] ?? ''),
+                $this->exception['file'] ?? '',
+                $this->exception['line'] ?? '',
+            ]);
+        } else {
+            $this->fingerprint = Fingerprint::composite([
+                $this->type,
+                $this->level,
+                Fingerprint::normalizeMessage($this->message),
+            ]);
+        }
+        
+        return $this->fingerprint;
+    }
+
+    /**
+     * Compute group key for aggregation.
+     */
+    public function computeGroupKey(): string
+    {
+        if ($this->exception) {
+            $this->groupKey = Fingerprint::composite([
+                $this->exception['cls'] ?? '',
+                $this->exception['file'] ?? '',
+            ]);
+        } else {
+            $this->groupKey = Fingerprint::composite([
+                $this->type,
+                $this->level,
+            ]);
+        }
+        
+        return $this->groupKey;
     }
 
     public function setRequest(array $request): self
@@ -177,6 +353,14 @@ class Trace implements \JsonSerializable
 
     public function jsonSerialize(): array
     {
+        // Auto-compute fingerprint if not set
+        if ($this->fingerprint === null) {
+            $this->computeFingerprint();
+        }
+        if ($this->groupKey === null) {
+            $this->computeGroupKey();
+        }
+
         return [
             'id' => $this->id,
             'type' => $this->type,
@@ -184,13 +368,41 @@ class Trace implements \JsonSerializable
             'message' => $this->message,
             'context' => $this->context,
             'tags' => $this->tags,
-            'breadcrumbs' => $this->breadcrumbs,
+            
+            // Request/Exception/Performance data
             'request' => $this->request,
             'exception' => $this->exception,
             'performance' => $this->performance,
+            
+            // Timestamps
             'timestamp' => $this->timestamp,
-            'datetime' => date('Y-m-d H:i:s', (int) $this->timestamp),
-            'duration_ms' => $this->duration !== null ? round($this->duration * 1000, 2) : null,
+            'timestamp_unix_nano' => (int)($this->timestamp * 1e9),
+            'datetime' => date('Y-m-d\TH:i:s.vP', (int) $this->timestamp),
+            'duration_ms' => $this->duration !== null ? round($this->duration * 1000, 3) : null,
+            
+            // OTEL Trace Context
+            'trace_id' => $this->traceId,
+            'span_id' => $this->spanId,
+            'parent_span_id' => $this->parentSpanId,
+            
+            // Linked data with counts for frontend
+            'breadcrumbs' => array_map(fn($b) => $b instanceof Breadcrumb ? $b->jsonSerialize() : $b, $this->breadcrumbs),
+            'breadcrumb_count' => count($this->breadcrumbs),
+            
+            'logs' => array_map(fn($l) => $l instanceof LogEntry ? $l->jsonSerialize() : $l, $this->logs),
+            'log_count' => count($this->logs),
+            
+            'spans' => array_map(fn($s) => $s instanceof Span ? $s->jsonSerialize() : $s, $this->spans),
+            'span_count' => count($this->spans),
+            
+            // Fingerprinting for deduplication and grouping
+            'fingerprint' => $this->fingerprint,
+            'group_key' => $this->groupKey,
+            
+            // Breadcrumb trail fingerprint for pattern detection
+            'breadcrumb_fingerprint' => count($this->breadcrumbs) > 0 
+                ? Fingerprint::breadcrumbTrail($this->breadcrumbs) 
+                : null,
         ];
     }
 }

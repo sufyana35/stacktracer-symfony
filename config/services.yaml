@@ -35,14 +35,36 @@ services:
             $filterVendorFrames: '%stacktracer.filter_vendor_frames%'
             $captureRequestHeaders: '%stacktracer.capture_request_headers%'
             $sensitiveKeys: '%stacktracer.sensitive_keys%'
+            $serviceName: '%stacktracer.service_name%'
+            $serviceVersion: '%stacktracer.service_version%'
         public: true
         tags:
             - { name: kernel.reset, method: flush }
+
+    # Span Manager (for advanced span operations)
+    Stacktracer\SymfonyBundle\Service\SpanManager:
+        factory: ['@Stacktracer\SymfonyBundle\Service\TracingService', 'getSpanManager']
+        public: true
 
     # Alias for easy injection
     stacktracer:
         alias: Stacktracer\SymfonyBundle\Service\TracingService
         public: true
+
+    stacktracer.spans:
+        alias: Stacktracer\SymfonyBundle\Service\SpanManager
+        public: true
+
+    # Monolog Handler
+    Stacktracer\SymfonyBundle\Handler\MonologHandler:
+        arguments:
+            $tracingService: '@Stacktracer\SymfonyBundle\Service\TracingService'
+            $level: '%stacktracer.logging.level%'
+            $bubble: true
+            $captureContext: '%stacktracer.logging.capture_context%'
+            $excludeChannels: '%stacktracer.logging.exclude_channels%'
+        tags:
+            - { name: monolog.handler, handler: stacktracer }
 
     # Event subscribers
     Stacktracer\SymfonyBundle\EventSubscriber\RequestTracingSubscriber:
