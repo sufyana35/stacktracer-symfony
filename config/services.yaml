@@ -56,16 +56,6 @@ services:
         public: true
 
     # Monolog Handler
-    Stacktracer\SymfonyBundle\Handler\MonologHandler:
-        arguments:
-            $tracingService: '@Stacktracer\SymfonyBundle\Service\TracingService'
-            $level: '%stacktracer.logging.level%'
-            $bubble: true
-            $captureContext: '%stacktracer.logging.capture_context%'
-            $excludeChannels: '%stacktracer.logging.exclude_channels%'
-        tags:
-            - { name: monolog.handler, handler: stacktracer }
-
     # Event subscribers
     Stacktracer\SymfonyBundle\EventSubscriber\RequestTracingSubscriber:
         arguments:
