@@ -140,6 +140,7 @@ class TracingService
         $this->currentTrace->setDuration($duration);
 
         $this->transport->send($this->currentTrace);
+        $this->transport->flush();
         $this->currentTrace = null;
     }
 
