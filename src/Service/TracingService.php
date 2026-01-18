@@ -356,12 +356,12 @@ class TracingService
             'file' => $this->shortenPath($exception->getFile()),
             'line' => $exception->getLine(),
             'trace' => array_map(fn($f) => $f->jsonSerialize(), $stackFrames),
-            'stack_fingerprint' => $stackFingerprint,
-            'stack_group_key' => $stackGroupKey,
+            'stack_fp' => $stackFingerprint,
+            'stack_gk' => $stackGroupKey,
         ];
 
         if (!empty($codeContext)) {
-            $exceptionData['code_context'] = $codeContext;
+            $exceptionData['ctx'] = $codeContext;
         }
 
         if ($exception->getPrevious()) {
@@ -372,12 +372,12 @@ class TracingService
         }
 
         // Compute exception fingerprint for deduplication
-        $exceptionData['fingerprint'] = Fingerprint::exception($exception);
-        $exceptionData['group_key'] = Fingerprint::exceptionGroup($exception);
+        $exceptionData['fp'] = Fingerprint::exception($exception);
+        $exceptionData['gk'] = Fingerprint::exceptionGroup($exception);
 
         $trace->setException($exceptionData);
-        $trace->setFingerprint($exceptionData['fingerprint']);
-        $trace->setGroupKey($exceptionData['group_key']);
+        $trace->setFingerprint($exceptionData['fp']);
+        $trace->setGroupKey($exceptionData['gk']);
 
         // Sync trace ID with span manager
         if ($this->spanManager->getCurrentTraceId()) {
@@ -422,8 +422,8 @@ class TracingService
             // Attach exception data to the current request trace
             $this->currentTrace->setException($exceptionData);
             $this->currentTrace->setLevel(Trace::LEVEL_ERROR);
-            $this->currentTrace->setFingerprint($exceptionData['fingerprint']);
-            $this->currentTrace->setGroupKey($exceptionData['group_key']);
+            $this->currentTrace->setFingerprint($exceptionData['fp']);
+            $this->currentTrace->setGroupKey($exceptionData['gk']);
             // Don't send - will be sent with endTrace()
             return $trace;
         }

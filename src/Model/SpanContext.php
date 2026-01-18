@@ -147,13 +147,24 @@ class SpanContext implements \JsonSerializable
 
     public function jsonSerialize(): array
     {
-        return [
+        $data = [
             'trace_id' => $this->traceId,
             'span_id' => $this->spanId,
-            'trace_flags' => $this->traceFlags,
-            'trace_state' => $this->traceState,
-            'is_remote' => $this->isRemote,
-            'is_sampled' => $this->isSampled(),
         ];
+        
+        // Only include non-default flags
+        if ($this->traceFlags !== self::TRACE_FLAG_SAMPLED) {
+            $data['flags'] = $this->traceFlags;
+        }
+        
+        if ($this->traceState !== '') {
+            $data['state'] = $this->traceState;
+        }
+        
+        if ($this->isRemote) {
+            $data['remote'] = true;
+        }
+        
+        return $data;
     }
 }

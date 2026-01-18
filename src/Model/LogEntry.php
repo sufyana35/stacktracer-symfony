@@ -216,32 +216,41 @@ class LogEntry implements \JsonSerializable
 
     public function jsonSerialize(): array
     {
-        return [
+        $data = [
             'id' => $this->id,
-            'timestamp' => $this->timestamp,
-            'time_unix_nano' => (int)($this->timestamp * 1e9),
-            'severity_number' => $this->severityNumber,
-            'severity_text' => $this->severityText,
+            'ts' => (int)($this->timestamp * 1e9),
+            'sev' => $this->severityNumber,
+            'lvl' => $this->severityText,
             'body' => $this->body,
-            'attributes' => $this->attributes,
-            'resource' => $this->resource,
-            
-            // Linking
-            'span_id' => $this->spanId,
-            'trace_id' => $this->traceId,
-            
-            // Source
-            'source' => $this->sourceFile ? [
-                'file' => $this->sourceFile,
-                'line' => $this->sourceLine,
-                'function' => $this->sourceFunction,
-            ] : null,
-            
-            // Logger
-            'logger_name' => $this->loggerName,
-            'channel' => $this->channel,
-            
-            'fingerprint' => $this->getFingerprint(),
         ];
+        
+        // Only include non-empty attributes
+        if (!empty($this->attributes)) {
+            $data['attrs'] = $this->attributes;
+        }
+        
+        // Only include span_id if set
+        if ($this->spanId !== null) {
+            $data['span_id'] = $this->spanId;
+        }
+        
+        // Only include source if meaningful
+        if ($this->sourceFile !== null) {
+            $src = ['file' => $this->sourceFile, 'line' => $this->sourceLine];
+            if ($this->sourceFunction !== null) {
+                $src['fn'] = $this->sourceFunction;
+            }
+            $data['src'] = $src;
+        }
+        
+        // Only include channel if set
+        if ($this->channel !== null) {
+            $data['ch'] = $this->channel;
+        }
+        
+        // Always include fingerprint for deduplication
+        $data['fp'] = $this->getFingerprint();
+        
+        return $data;
     }
 }

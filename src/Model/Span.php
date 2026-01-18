@@ -399,6 +399,8 @@ class Span implements \JsonSerializable
                 unset($attrs[$key]);
             }
         }
+        // Filter out null values from attributes
+        $attrs = array_filter($attrs, fn($v) => $v !== null);
         if (!empty($attrs)) {
             $data['attrs'] = $attrs;
         }
@@ -407,9 +409,9 @@ class Span implements \JsonSerializable
         if (!empty($this->events)) {
             $data['events'] = array_map(function($e) {
                 $eventData = $e->jsonSerialize();
-                // Remove verbose stacktrace string
-                if (isset($eventData['attributes']['exception.stacktrace'])) {
-                    unset($eventData['attributes']['exception.stacktrace']);
+                // Remove verbose stacktrace string from attrs
+                if (isset($eventData['attrs']['exception.stacktrace'])) {
+                    unset($eventData['attrs']['exception.stacktrace']);
                 }
                 return $eventData;
             }, $this->events);
@@ -428,7 +430,7 @@ class Span implements \JsonSerializable
         
         // Fingerprint only if set
         if ($this->fingerprint !== null) {
-            $data['fingerprint'] = $this->fingerprint;
+            $data['fp'] = $this->fingerprint;
         }
 
         return $data;

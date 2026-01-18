@@ -30,11 +30,20 @@ class SpanLink implements \JsonSerializable
 
     public function jsonSerialize(): array
     {
-        return [
+        $data = [
             'trace_id' => $this->context->getTraceId(),
             'span_id' => $this->context->getSpanId(),
-            'trace_state' => $this->context->getTraceState(),
-            'attributes' => $this->attributes,
         ];
+        
+        $traceState = $this->context->getTraceState();
+        if ($traceState !== '') {
+            $data['trace_state'] = $traceState;
+        }
+        
+        if (!empty($this->attributes)) {
+            $data['attrs'] = $this->attributes;
+        }
+        
+        return $data;
     }
 }

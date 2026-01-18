@@ -199,6 +199,9 @@ class Breadcrumb implements \JsonSerializable
             }
         }
         
+        // Include fingerprint for deduplication
+        $data['fp'] = $this->getFingerprint();
+        
         return $data;
     }
     

@@ -375,8 +375,8 @@ class Trace implements \JsonSerializable
             'trace_id' => $this->traceId,
             
             // Fingerprinting for deduplication and grouping
-            'fingerprint' => $this->fingerprint,
-            'group_key' => $this->groupKey,
+            'fp' => $this->fingerprint,
+            'gk' => $this->groupKey,
         ];
         
         // Only include non-empty arrays/values
@@ -408,7 +408,7 @@ class Trace implements \JsonSerializable
         // Only include breadcrumbs if present
         if (!empty($this->breadcrumbs)) {
             $data['breadcrumbs'] = array_map(fn($b) => $b instanceof Breadcrumb ? $b->jsonSerialize() : $b, $this->breadcrumbs);
-            $data['breadcrumb_fingerprint'] = Fingerprint::breadcrumbTrail($this->breadcrumbs);
+            $data['bc_fp'] = Fingerprint::breadcrumbTrail($this->breadcrumbs);
         }
         
         // Only include logs if present

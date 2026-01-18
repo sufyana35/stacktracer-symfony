@@ -40,10 +40,15 @@ class SpanEvent implements \JsonSerializable
 
     public function jsonSerialize(): array
     {
-        return [
+        $data = [
             'name' => $this->name,
-            'time_unix_nano' => (int)($this->timestamp * 1e9),
-            'attributes' => $this->attributes,
+            'ts' => (int)($this->timestamp * 1e9),
         ];
+        
+        if (!empty($this->attributes)) {
+            $data['attrs'] = $this->attributes;
+        }
+        
+        return $data;
     }
 }

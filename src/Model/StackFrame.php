@@ -288,20 +288,35 @@ class StackFrame implements \JsonSerializable
 
     public function jsonSerialize(): array
     {
-        return [
+        $data = [
             'file' => $this->file,
             'line' => $this->line,
-            'function' => $this->function,
-            'class' => $this->class,
-            'type' => $this->type,
-            'is_vendor' => $this->isVendor,
-            'method' => $this->getMethodSignature(),
-            'code_context' => $this->codeContext,
-            'collapsed_count' => $this->collapsedCount,
-            
-            // Fingerprinting
-            'fingerprint' => $this->fingerprint,
-            'file_hash' => $this->fileHash,
         ];
+        
+        if ($this->function !== null) {
+            $data['fn'] = $this->function;
+        }
+        
+        if ($this->class !== null) {
+            $data['cls'] = $this->class;
+            if ($this->type !== null) {
+                $data['type'] = $this->type;
+            }
+        }
+        
+        // Only include vendor flag if true (default assumption is user code)
+        if ($this->isVendor) {
+            $data['vendor'] = true;
+        }
+        
+        if ($this->codeContext !== null) {
+            $data['ctx'] = $this->codeContext;
+        }
+        
+        if ($this->collapsedCount !== null && $this->collapsedCount > 1) {
+            $data['collapsed'] = $this->collapsedCount;
+        }
+        
+        return $data;
     }
 }
