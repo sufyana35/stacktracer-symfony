@@ -648,16 +648,23 @@ class TracingService
         $start = max(0, $line - $numLines - 1);
         $end = min(count($lines), $line + $numLines);
 
-        $context = [];
+        $codeLines = [];
+        $errorIdx = null;
         for ($i = $start; $i < $end; $i++) {
-            $context[] = [
-                'ln' => $i + 1,
-                'c' => rtrim($lines[$i]),
-                'e' => ($i + 1) === $line,
-            ];
+            $codeLines[] = rtrim($lines[$i]);
+            if (($i + 1) === $line) {
+                $errorIdx = count($codeLines) - 1;
+            }
         }
 
-        return $context;
+        // Ultra-compact format: [startLine, [code...], errorIndex]
+        // Frontend calculates line numbers: startLine + index
+        // Saves ~70% space vs verbose format
+        return [
+            $start + 1,      // Starting line number
+            $codeLines,      // Array of code strings
+            $errorIdx        // Index of error line (0-based)
+        ];
     }
 
     public function getExceptionContextLines(): int
