@@ -1,0 +1,52 @@
+# Stacktracer Symfony Bundle - Example Configuration
+# Copy this to your project's config/packages/stacktracer.yaml
+
+stacktracer:
+    # Enable or disable tracing globally
+    enabled: true
+
+    # API Transport Configuration (REQUIRED)
+    transport:
+        # API endpoint URL to send traces
+        endpoint: '%env(STACKTRACER_ENDPOINT)%'
+        # API key for authentication
+        api_key: '%env(STACKTRACER_API_KEY)%'
+        # Number of traces to batch before sending (1-500)
+        batch_size: 50
+        # Max time to wait before flushing batch (milliseconds)
+        flush_interval_ms: 5000
+        # Maximum traces to queue (oldest dropped on overflow)
+        max_queue_size: 500
+        # HTTP timeout in seconds
+        timeout: 5
+        # Gzip compress payloads over 1KB
+        compress: true
+        # Number of retry attempts on failure
+        max_retries: 3
+
+    # Regex patterns for paths to exclude from tracing
+    exclude_patterns:
+        - '#^/_profiler#'
+        - '#^/_wdt#'
+
+    # What to capture
+    capture:
+        request: true                # Capture HTTP request traces
+        exception: true              # Capture exception traces
+        exception_context_lines: 5   # Lines of code around the main exception location
+        stacktrace_context_lines: 5  # Lines of code for each stack trace frame
+
+    # Performance optimization
+    performance:
+        sample_rate: 1.0             # 1.0 = 100%, 0.1 = 10% of requests
+        max_stack_frames: 50         # Limit stack trace depth (5-200)
+        capture_code_context: true   # Set to false to save bandwidth
+        filter_vendor_frames: true   # Collapse consecutive vendor/framework frames
+        capture_request_headers: true # Capture HTTP request headers
+        sensitive_keys:              # Keys to redact from captured data
+            - password
+            - token
+            - secret
+            - api_key
+            - authorization
+            - cookie

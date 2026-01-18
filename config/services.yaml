@@ -1,0 +1,59 @@
+services:
+    _defaults:
+        autowire: true
+        autoconfigure: true
+        public: false
+
+    # HTTP Transport
+    Stacktracer\SymfonyBundle\Transport\HttpTransport:
+        arguments:
+            $endpoint: '%stacktracer.transport.endpoint%'
+            $apiKey: '%stacktracer.transport.api_key%'
+            $logger: '@?logger'
+            $batchSize: '%stacktracer.transport.batch_size%'
+            $flushIntervalMs: '%stacktracer.transport.flush_interval_ms%'
+            $maxQueueSize: '%stacktracer.transport.max_queue_size%'
+            $timeout: '%stacktracer.transport.timeout%'
+            $compress: '%stacktracer.transport.compress%'
+            $maxRetries: '%stacktracer.transport.max_retries%'
+        tags:
+            - { name: kernel.reset, method: flush }
+
+    Stacktracer\SymfonyBundle\Transport\TransportInterface:
+        alias: Stacktracer\SymfonyBundle\Transport\HttpTransport
+
+    # Main service
+    Stacktracer\SymfonyBundle\Service\TracingService:
+        arguments:
+            $transport: '@Stacktracer\SymfonyBundle\Transport\TransportInterface'
+            $enabled: '%stacktracer.enabled%'
+            $exceptionContextLines: '%stacktracer.exception_context_lines%'
+            $stacktraceContextLines: '%stacktracer.stacktrace_context_lines%'
+            $sampleRate: '%stacktracer.sample_rate%'
+            $maxStackFrames: '%stacktracer.max_stack_frames%'
+            $captureCodeContext: '%stacktracer.capture_code_context%'
+            $filterVendorFrames: '%stacktracer.filter_vendor_frames%'
+            $captureRequestHeaders: '%stacktracer.capture_request_headers%'
+            $sensitiveKeys: '%stacktracer.sensitive_keys%'
+        public: true
+        tags:
+            - { name: kernel.reset, method: flush }
+
+    # Alias for easy injection
+    stacktracer:
+        alias: Stacktracer\SymfonyBundle\Service\TracingService
+        public: true
+
+    # Event subscribers
+    Stacktracer\SymfonyBundle\EventSubscriber\RequestTracingSubscriber:
+        arguments:
+            $tracing: '@Stacktracer\SymfonyBundle\Service\TracingService'
+            $excludePatterns: '%stacktracer.exclude_patterns%'
+        tags:
+            - { name: kernel.event_subscriber }
+
+    Stacktracer\SymfonyBundle\EventSubscriber\ExceptionTracingSubscriber:
+        arguments:
+            $tracing: '@Stacktracer\SymfonyBundle\Service\TracingService'
+        tags:
+            - { name: kernel.event_subscriber }
