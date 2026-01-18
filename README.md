@@ -11,6 +11,24 @@ Lightweight error tracking and tracing SDK for Symfony applications with **OpenT
 - 📊 **Monolog Integration** - Automatic log capture linked to spans
 - ⚡ **Performance** - Batching, compression, and sampling
 
+## Feature Tiers
+
+| Feature | Tier | Default |
+|---------|------|---------|
+| Exceptions & Stack Traces | **Free** | ✅ Enabled |
+| Logs | **Free** | ✅ Enabled |
+| Breadcrumbs | **Free** | ✅ Enabled |
+| Request/Response Data | **Free** | ✅ Enabled |
+| OTEL Spans | **Paid** | ❌ Disabled |
+
+To enable OTEL spans (paid feature):
+
+```yaml
+stacktracer:
+    capture:
+        spans: true
+```
+
 ## Installation
 
 ```bash
@@ -76,6 +94,7 @@ stacktracer:
         exception: true              # Track exceptions
         exception_context_lines: 5   # Code lines around error
         stacktrace_context_lines: 5  # Code lines per frame
+        spans: false                 # 💰 OTEL spans (paid feature, disabled by default)
     
     performance:
         sample_rate: 1.0             # 0.1 = 10% sampling

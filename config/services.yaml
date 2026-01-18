@@ -27,6 +27,7 @@ services:
         arguments:
             $transport: '@Stacktracer\SymfonyBundle\Transport\TransportInterface'
             $enabled: '%stacktracer.enabled%'
+            $spansEnabled: '%stacktracer.capture_spans%'
             $exceptionContextLines: '%stacktracer.exception_context_lines%'
             $stacktraceContextLines: '%stacktracer.stacktrace_context_lines%'
             $sampleRate: '%stacktracer.sample_rate%'

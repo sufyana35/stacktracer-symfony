@@ -35,6 +35,7 @@ class TracingService
     private array $globalTags = [];
     private array $globalContext = [];
     private bool $enabled;
+    private bool $spansEnabled;
     private int $exceptionContextLines;
     private int $stacktraceContextLines;
     private float $sampleRate;
@@ -50,6 +51,7 @@ class TracingService
     public function __construct(
         TransportInterface $transport,
         bool $enabled = true,
+        bool $spansEnabled = false,
         int $exceptionContextLines = 5,
         int $stacktraceContextLines = 5,
         float $sampleRate = 1.0,
@@ -63,6 +65,7 @@ class TracingService
     ) {
         $this->transport = $transport;
         $this->enabled = $enabled;
+        $this->spansEnabled = $spansEnabled;
         $this->exceptionContextLines = $exceptionContextLines;
         $this->stacktraceContextLines = $stacktraceContextLines;
         $this->sampleRate = $sampleRate;
@@ -81,12 +84,21 @@ class TracingService
         return $this->enabled;
     }
 
+    /**
+     * Check if OTEL spans are enabled (paid feature).
+     */
+    public function isSpansEnabled(): bool
+    {
+        return $this->spansEnabled;
+    }
+
     // ========================================
-    // SPAN MANAGEMENT (OTEL-compatible)
+    // SPAN MANAGEMENT (OTEL-compatible, paid feature)
     // ========================================
 
     /**
      * Get the span manager for advanced span operations.
+     * Note: Spans are only included in payloads if spansEnabled is true.
      */
     public function getSpanManager(): SpanManager
     {
@@ -95,9 +107,12 @@ class TracingService
 
     /**
      * Start a new span within the current trace.
+     * Returns a no-op span if spans are disabled.
      */
     public function startSpan(string $name, string $kind = Span::KIND_INTERNAL): Span
     {
+        // Always create span for internal tracking (breadcrumbs/logs link to spans)
+        // but only include in output if spansEnabled
         $span = $this->spanManager->startSpan($name, $kind);
         
         // Sync trace context
@@ -295,8 +310,10 @@ class TracingService
         $duration = microtime(true) - $this->currentTrace->getTimestamp();
         $this->currentTrace->setDuration($duration);
 
-        // Attach all spans to the trace
-        $this->currentTrace->setSpans($this->spanManager->getSpans());
+        // Attach spans only if spans feature is enabled (paid feature)
+        if ($this->spansEnabled) {
+            $this->currentTrace->setSpans($this->spanManager->getSpans());
+        }
 
         // Compute fingerprints for deduplication
         $this->currentTrace->computeFingerprint();
@@ -414,8 +431,10 @@ class TracingService
             }
         }
 
-        // Attach spans to exception trace
-        $trace->setSpans($this->spanManager->getSpans());
+        // Attach spans only if spans feature is enabled (paid feature)
+        if ($this->spansEnabled) {
+            $trace->setSpans($this->spanManager->getSpans());
+        }
 
         // If we're in an active request trace, attach exception to it instead of sending separately
         if ($this->currentTrace !== null) {
@@ -478,8 +497,10 @@ class TracingService
             }
         }
 
-        // Attach spans
-        $trace->setSpans($this->spanManager->getSpans());
+        // Attach spans only if spans feature is enabled (paid feature)
+        if ($this->spansEnabled) {
+            $trace->setSpans($this->spanManager->getSpans());
+        }
 
         if ($this->enabled) {
             $this->transport->send($trace);

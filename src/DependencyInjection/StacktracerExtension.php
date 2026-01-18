@@ -31,6 +31,7 @@ class StacktracerExtension extends Extension
         // Capture settings
         $container->setParameter('stacktracer.capture_request', $config['capture']['request']);
         $container->setParameter('stacktracer.capture_exception', $config['capture']['exception']);
+        $container->setParameter('stacktracer.capture_spans', $config['capture']['spans']);
         $container->setParameter('stacktracer.exception_context_lines', $config['capture']['exception_context_lines']);
         $container->setParameter('stacktracer.stacktrace_context_lines', $config['capture']['stacktrace_context_lines']);
 

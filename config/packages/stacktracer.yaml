@@ -33,8 +33,10 @@ stacktracer:
     capture:
         request: true                # Capture HTTP request traces
         exception: true              # Capture exception traces
+        spans: false                 # Enable OTEL spans (paid feature)
         exception_context_lines: 5   # Lines of code around the main exception location
         stacktrace_context_lines: 5  # Lines of code for each stack trace frame
+        # Note: Logs, breadcrumbs, and stack traces are always captured when available
 
     # Performance optimization
     performance:
