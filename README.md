@@ -174,6 +174,74 @@ class MyController
 }
 ```
 
+## Feature Flags & Experiments
+
+Monitor errors as you roll out features or run A/B tests. Feature flags are linked to errors, helping identify if a feature introduced issues.
+
+```php
+use Stacktracer\SymfonyBundle\Model\FeatureFlag;
+
+class MyController
+{
+    public function __construct(
+        private TracingService $stacktracer
+    ) {}
+    
+    public function checkout()
+    {
+        // Declare a single feature flag with variant
+        $this->stacktracer->addFeatureFlag('Checkout button color', 'Blue');
+        $this->stacktracer->addFeatureFlag('New checkout flow');
+        
+        // Declare multiple feature flags at once
+        $this->stacktracer->addFeatureFlags([
+            new FeatureFlag('Special offer', 'Free Coffee'),
+            new FeatureFlag('Premium shipping'),
+        ]);
+        
+        // Remove flags when features are deactivated
+        $this->stacktracer->clearFeatureFlag('Checkout button color');
+        
+        // Clear all flags
+        $this->stacktracer->clearFeatureFlags();
+    }
+}
+```
+
+### LaunchDarkly Integration
+
+```php
+$featureEnabled = $launchDarklyClient->variation('bool-flag-key', $user, false);
+
+if ($featureEnabled) {
+    $this->stacktracer->addFeatureFlag('bool-flag-key');
+} else {
+    $this->stacktracer->clearFeatureFlag('bool-flag-key');
+}
+
+// String variant
+$variant = $launchDarklyClient->variation('button-color', $user, 'default');
+$this->stacktracer->addFeatureFlag('button-color', $variant);
+```
+
+### Split Integration
+
+```php
+// Use an impression listener to automatically track experiments
+class StacktracerImpressionListener implements \SplitIO\Sdk\ImpressionListener
+{
+    public function __construct(private TracingService $stacktracer) {}
+
+    public function logImpression($data)
+    {
+        $this->stacktracer->addFeatureFlag(
+            $data['impression']['feature'],
+            $data['impression']['treatment']
+        );
+    }
+}
+```
+
 ## Distributed Tracing
 
 The bundle automatically propagates trace context via W3C `traceparent` header:

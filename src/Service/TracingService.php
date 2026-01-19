@@ -3,6 +3,7 @@
 namespace Stacktracer\SymfonyBundle\Service;
 
 use Stacktracer\SymfonyBundle\Model\Breadcrumb;
+use Stacktracer\SymfonyBundle\Model\FeatureFlag;
 use Stacktracer\SymfonyBundle\Model\LogEntry;
 use Stacktracer\SymfonyBundle\Model\Span;
 use Stacktracer\SymfonyBundle\Model\SpanContext;
@@ -34,6 +35,10 @@ class TracingService
     private ?Trace $currentTrace = null;
     private array $globalTags = [];
     private array $globalContext = [];
+    
+    /** @var FeatureFlag[] */
+    private array $featureFlags = [];
+    
     private bool $enabled;
     private bool $spansEnabled;
     private int $exceptionContextLines;
@@ -285,6 +290,11 @@ class TracingService
         foreach ($this->globalTags as $key => $value) {
             $this->currentTrace->addTag($key, $value);
         }
+        
+        // Attach any pre-registered feature flags
+        if (!empty($this->featureFlags)) {
+            $this->currentTrace->setFeatureFlags($this->featureFlags);
+        }
 
         // Sync trace ID with span manager
         $rootContext = $this->spanManager->getRootContext();
@@ -338,6 +348,11 @@ class TracingService
 
         foreach ($this->globalTags as $key => $value) {
             $trace->addTag($key, $value);
+        }
+        
+        // Attach feature flags
+        if (!empty($this->featureFlags)) {
+            $trace->setFeatureFlags($this->featureFlags);
         }
 
         // Capture code context at exception location
@@ -467,6 +482,11 @@ class TracingService
         foreach ($this->globalTags as $key => $value) {
             $trace->addTag($key, $value);
         }
+        
+        // Attach feature flags
+        if (!empty($this->featureFlags)) {
+            $trace->setFeatureFlags($this->featureFlags);
+        }
 
         // Sync trace ID with span manager
         if ($this->spanManager->getCurrentTraceId()) {
@@ -544,6 +564,107 @@ class TracingService
         }
         
         return $breadcrumb;
+    }
+
+    // ========================================
+    // FEATURE FLAGS & EXPERIMENTS
+    // ========================================
+
+    /**
+     * Add a single feature flag or experiment.
+     * 
+     * @param string $name Flag name
+     * @param string|null $variant Optional variant (e.g., 'Blue', 'control', 'v2')
+     * 
+     * @example
+     * ```php
+     * $stacktracer->addFeatureFlag('Checkout button color', 'Blue');
+     * $stacktracer->addFeatureFlag('New checkout flow');
+     * ```
+     */
+    public function addFeatureFlag(string $name, ?string $variant = null): void
+    {
+        $flag = new FeatureFlag($name, $variant);
+        
+        // Update existing or add new
+        foreach ($this->featureFlags as $i => $existing) {
+            if ($existing->getName() === $name) {
+                $this->featureFlags[$i] = $flag;
+                if ($this->currentTrace !== null) {
+                    $this->currentTrace->addFeatureFlag($flag);
+                }
+                return;
+            }
+        }
+        
+        $this->featureFlags[] = $flag;
+        
+        if ($this->currentTrace !== null) {
+            $this->currentTrace->addFeatureFlag($flag);
+        }
+    }
+
+    /**
+     * Add multiple feature flags.
+     * If called again, new data is merged with existing flags (newer variants take precedence).
+     * 
+     * @param FeatureFlag[] $flags
+     * 
+     * @example
+     * ```php
+     * $stacktracer->addFeatureFlags([
+     *     new FeatureFlag('Checkout button color', 'Blue'),
+     *     new FeatureFlag('Special offer', 'Free Coffee'),
+     *     new FeatureFlag('New checkout flow'),
+     * ]);
+     * ```
+     */
+    public function addFeatureFlags(array $flags): void
+    {
+        foreach ($flags as $flag) {
+            if ($flag instanceof FeatureFlag) {
+                $this->addFeatureFlag($flag->getName(), $flag->getVariant());
+            }
+        }
+    }
+
+    /**
+     * Remove a single feature flag.
+     * 
+     * @param string $name Flag name to remove
+     */
+    public function clearFeatureFlag(string $name): void
+    {
+        $this->featureFlags = array_values(array_filter(
+            $this->featureFlags,
+            fn($f) => $f->getName() !== $name
+        ));
+        
+        if ($this->currentTrace !== null) {
+            $this->currentTrace->clearFeatureFlag($name);
+        }
+    }
+
+    /**
+     * Remove all feature flags.
+     */
+    public function clearFeatureFlags(): void
+    {
+        $this->featureFlags = [];
+        
+        if ($this->currentTrace !== null) {
+            $this->currentTrace->clearFeatureFlags();
+        }
+    }
+
+    /**
+     * Get all active feature flags.
+     * 
+     * @return FeatureFlag[]
+     */
+    public function getFeatureFlags(): array
+    {
+        return $this->featureFlags;
     }
 
     public function setTag(string $key, string $value): void

@@ -2,6 +2,7 @@
 
 namespace Stacktracer\SymfonyBundle\Model;
 
+use Stacktracer\SymfonyBundle\Model\FeatureFlag;
 use Stacktracer\SymfonyBundle\Util\Fingerprint;
 
 /**
@@ -38,6 +39,9 @@ class Trace implements \JsonSerializable
     /** @var Span[] */
     private array $spans;
     
+    /** @var FeatureFlag[] */
+    private array $featureFlags;
+    
     private ?array $request;
     private ?array $exception;
     private ?array $performance;
@@ -68,6 +72,7 @@ class Trace implements \JsonSerializable
         $this->breadcrumbs = [];
         $this->logs = [];
         $this->spans = [];
+        $this->featureFlags = [];
         $this->request = null;
         $this->exception = null;
         $this->performance = null;
@@ -203,6 +208,77 @@ class Trace implements \JsonSerializable
     public function getSpans(): array
     {
         return $this->spans;
+    }
+
+    // --- Feature Flags ---
+
+    /**
+     * Add a feature flag or experiment.
+     */
+    public function addFeatureFlag(FeatureFlag $flag): self
+    {
+        // Update existing flag with same name or add new one
+        foreach ($this->featureFlags as $i => $existing) {
+            if ($existing->getName() === $flag->getName()) {
+                $this->featureFlags[$i] = $flag;
+                return $this;
+            }
+        }
+        $this->featureFlags[] = $flag;
+        return $this;
+    }
+
+    /**
+     * Add multiple feature flags.
+     */
+    public function addFeatureFlags(array $flags): self
+    {
+        foreach ($flags as $flag) {
+            $this->addFeatureFlag($flag);
+        }
+        return $this;
+    }
+
+    /**
+     * Remove a feature flag by name.
+     */
+    public function clearFeatureFlag(string $name): self
+    {
+        $this->featureFlags = array_values(array_filter(
+            $this->featureFlags,
+            fn($f) => $f->getName() !== $name
+        ));
+        return $this;
+    }
+
+    /**
+     * Remove all feature flags.
+     */
+    public function clearFeatureFlags(): self
+    {
+        $this->featureFlags = [];
+        return $this;
+    }
+
+    /**
+     * Get all feature flags.
+     * 
+     * @return FeatureFlag[]
+     */
+    public function getFeatureFlags(): array
+    {
+        return $this->featureFlags;
+    }
+
+    /**
+     * Set feature flags (replaces existing).
+     * 
+     * @param FeatureFlag[] $flags
+     */
+    public function setFeatureFlags(array $flags): self
+    {
+        $this->featureFlags = $flags;
+        return $this;
     }
 
     // --- OTEL Context ---
@@ -419,6 +495,11 @@ class Trace implements \JsonSerializable
         // Only include spans if present - with deduplication flag
         if (!empty($this->spans)) {
             $data['spans'] = array_map(fn($s) => $s instanceof Span ? $s->jsonSerialize(true) : $s, $this->spans);
+        }
+        
+        // Only include feature flags if present
+        if (!empty($this->featureFlags)) {
+            $data['flags'] = array_map(fn($f) => $f->jsonSerialize(), $this->featureFlags);
         }
 
         return $data;
