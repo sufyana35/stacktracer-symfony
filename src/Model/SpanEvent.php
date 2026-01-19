@@ -1,16 +1,20 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Stacktracer\SymfonyBundle\Model;
 
 /**
  * OTEL Span Event - a timestamped annotation within a span.
- * 
+ *
  * @see https://opentelemetry.io/docs/concepts/signals/traces/#span-events
  */
 class SpanEvent implements \JsonSerializable
 {
     private string $name;
+
     private float $timestamp;
+
     private array $attributes;
 
     public function __construct(
@@ -42,13 +46,13 @@ class SpanEvent implements \JsonSerializable
     {
         $data = [
             'name' => $this->name,
-            'ts' => (int)($this->timestamp * 1e9),
+            'ts' => (int) ($this->timestamp * 1e9),
         ];
-        
+
         if (!empty($this->attributes)) {
             $data['attrs'] = $this->attributes;
         }
-        
+
         return $data;
     }
 }

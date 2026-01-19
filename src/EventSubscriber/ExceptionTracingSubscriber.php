@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Stacktracer\SymfonyBundle\EventSubscriber;
 
 use Stacktracer\SymfonyBundle\Model\Breadcrumb;
@@ -10,9 +12,13 @@ use Symfony\Component\HttpKernel\KernelEvents;
 
 /**
  * Subscribes to exception events to capture them as traces.
- * Records exceptions in the current span for distributed tracing.
+ *
+ * Automatically captures unhandled exceptions, records them in the current span
+ * for distributed tracing, and generates fingerprints for deduplication.
+ *
+ * @author Stacktracer <hello@stacktracer.io>
  */
-class ExceptionTracingSubscriber implements EventSubscriberInterface
+final class ExceptionTracingSubscriber implements EventSubscriberInterface
 {
     private TracingService $tracing;
 

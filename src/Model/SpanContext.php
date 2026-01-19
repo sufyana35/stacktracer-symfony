@@ -1,11 +1,14 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Stacktracer\SymfonyBundle\Model;
 
 /**
  * OpenTelemetry-compatible Span Context for distributed tracing.
- * 
+ *
  * Follows W3C Trace Context specification:
+ *
  * @see https://www.w3.org/TR/trace-context/
  * @see https://opentelemetry.io/docs/concepts/signals/traces/#span-context
  */
@@ -15,9 +18,13 @@ class SpanContext implements \JsonSerializable
     public const TRACE_FLAG_RANDOM = 0x02;
 
     private string $traceId;
+
     private string $spanId;
+
     private int $traceFlags;
+
     private string $traceState;
+
     private bool $isRemote;
 
     public function __construct(
@@ -52,12 +59,12 @@ class SpanContext implements \JsonSerializable
 
     /**
      * Create context from W3C traceparent header.
-     * Format: version-traceId-parentSpanId-traceFlags
+     * Format: version-traceId-parentSpanId-traceFlags.
      */
     public static function fromTraceparent(string $traceparent): ?self
     {
         $parts = explode('-', $traceparent);
-        
+
         if (count($parts) !== 4) {
             return null;
         }
@@ -139,7 +146,7 @@ class SpanContext implements \JsonSerializable
      */
     public function isValid(): bool
     {
-        return strlen($this->traceId) === 32 
+        return strlen($this->traceId) === 32
             && strlen($this->spanId) === 16
             && $this->traceId !== str_repeat('0', 32)
             && $this->spanId !== str_repeat('0', 16);
@@ -151,20 +158,20 @@ class SpanContext implements \JsonSerializable
             'trace_id' => $this->traceId,
             'span_id' => $this->spanId,
         ];
-        
+
         // Only include non-default flags
         if ($this->traceFlags !== self::TRACE_FLAG_SAMPLED) {
             $data['flags'] = $this->traceFlags;
         }
-        
+
         if ($this->traceState !== '') {
             $data['state'] = $this->traceState;
         }
-        
+
         if ($this->isRemote) {
             $data['remote'] = true;
         }
-        
+
         return $data;
     }
 }

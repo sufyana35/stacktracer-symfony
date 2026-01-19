@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Stacktracer\SymfonyBundle\Service;
 
 use Stacktracer\SymfonyBundle\Model\Breadcrumb;
@@ -31,26 +33,42 @@ use Stacktracer\SymfonyBundle\Util\Fingerprint;
 class TracingService
 {
     private TransportInterface $transport;
+
     private SpanManager $spanManager;
+
     private ?Trace $currentTrace = null;
+
     private array $globalTags = [];
+
     private array $globalContext = [];
-    
+
     /** @var FeatureFlag[] */
     private array $featureFlags = [];
-    
+
     private bool $enabled;
+
     private bool $spansEnabled;
+
     private int $exceptionContextLines;
+
     private int $stacktraceContextLines;
+
     private float $sampleRate;
+
     private int $maxStackFrames;
+
     private bool $captureCodeContext;
+
     private bool $filterVendorFrames;
+
     private bool $captureRequestHeaders;
+
     private array $sensitiveKeys;
+
     private ?string $projectDir = null;
+
     private string $serviceName;
+
     private string $serviceVersion;
 
     public function __construct(
@@ -119,12 +137,12 @@ class TracingService
         // Always create span for internal tracking (breadcrumbs/logs link to spans)
         // but only include in output if spansEnabled
         $span = $this->spanManager->startSpan($name, $kind);
-        
+
         // Sync trace context
         if ($this->currentTrace) {
             $this->currentTrace->setSpanId($span->getSpanId());
         }
-        
+
         return $span;
     }
 
@@ -152,6 +170,7 @@ class TracingService
         if ($this->currentTrace) {
             return $this->currentTrace->getTraceId();
         }
+
         return $this->spanManager->getCurrentTraceId();
     }
 
@@ -216,11 +235,11 @@ class TracingService
     public function addLogEntry(LogEntry $entry): void
     {
         $span = $this->spanManager->getCurrentSpan();
-        
+
         if ($span) {
             $span->addLog($entry);
         }
-        
+
         if ($this->currentTrace) {
             $this->currentTrace->addLog($entry);
         }
@@ -233,6 +252,7 @@ class TracingService
     {
         $entry = new LogEntry($message, $level, $context);
         $this->addLogEntry($entry);
+
         return $entry;
     }
 
@@ -280,6 +300,7 @@ class TracingService
                 $redacted[$key] = $value;
             }
         }
+
         return $redacted;
     }
 
@@ -290,7 +311,7 @@ class TracingService
         foreach ($this->globalTags as $key => $value) {
             $this->currentTrace->addTag($key, $value);
         }
-        
+
         // Attach any pre-registered feature flags
         if (!empty($this->featureFlags)) {
             $this->currentTrace->setFeatureFlags($this->featureFlags);
@@ -314,6 +335,7 @@ class TracingService
     {
         if ($this->currentTrace === null || !$this->enabled) {
             $this->spanManager->clear();
+
             return;
         }
 
@@ -331,7 +353,7 @@ class TracingService
 
         $this->transport->send($this->currentTrace);
         $this->transport->flush();
-        
+
         // Clear state
         $this->spanManager->clear();
         $this->currentTrace = null;
@@ -349,7 +371,7 @@ class TracingService
         foreach ($this->globalTags as $key => $value) {
             $trace->addTag($key, $value);
         }
-        
+
         // Attach feature flags
         if (!empty($this->featureFlags)) {
             $trace->setFeatureFlags($this->featureFlags);
@@ -387,7 +409,7 @@ class TracingService
             'code' => $exception->getCode(),
             'file' => $this->shortenPath($exception->getFile()),
             'line' => $exception->getLine(),
-            'trace' => array_map(fn($f) => $f->jsonSerialize(), $stackFrames),
+            'trace' => array_map(fn ($f) => $f->jsonSerialize(), $stackFrames),
             'stack_fp' => $stackFingerprint,
             'stack_gk' => $stackGroupKey,
         ];
@@ -458,6 +480,7 @@ class TracingService
             $this->currentTrace->setLevel(Trace::LEVEL_ERROR);
             $this->currentTrace->setFingerprint($exceptionData['fp']);
             $this->currentTrace->setGroupKey($exceptionData['gk']);
+
             // Don't send - will be sent with endTrace()
             return $trace;
         }
@@ -482,7 +505,7 @@ class TracingService
         foreach ($this->globalTags as $key => $value) {
             $trace->addTag($key, $value);
         }
-        
+
         // Attach feature flags
         if (!empty($this->featureFlags)) {
             $trace->setFeatureFlags($this->featureFlags);
@@ -553,16 +576,16 @@ class TracingService
     {
         $breadcrumb = new Breadcrumb($category, $message, $level, $data);
         $breadcrumb->captureSource(2);
-        
+
         $currentSpan = $this->spanManager->getCurrentSpan();
         if ($currentSpan) {
             $currentSpan->addBreadcrumb($breadcrumb);
         }
-        
+
         if ($this->currentTrace !== null) {
             $this->currentTrace->addBreadcrumbObject($breadcrumb);
         }
-        
+
         return $breadcrumb;
     }
 
@@ -572,10 +595,10 @@ class TracingService
 
     /**
      * Add a single feature flag or experiment.
-     * 
+     *
      * @param string $name Flag name
      * @param string|null $variant Optional variant (e.g., 'Blue', 'control', 'v2')
-     * 
+     *
      * @example
      * ```php
      * $stacktracer->addFeatureFlag('Checkout button color', 'Blue');
@@ -585,7 +608,7 @@ class TracingService
     public function addFeatureFlag(string $name, ?string $variant = null): void
     {
         $flag = new FeatureFlag($name, $variant);
-        
+
         // Update existing or add new
         foreach ($this->featureFlags as $i => $existing) {
             if ($existing->getName() === $name) {
@@ -593,12 +616,13 @@ class TracingService
                 if ($this->currentTrace !== null) {
                     $this->currentTrace->addFeatureFlag($flag);
                 }
+
                 return;
             }
         }
-        
+
         $this->featureFlags[] = $flag;
-        
+
         if ($this->currentTrace !== null) {
             $this->currentTrace->addFeatureFlag($flag);
         }
@@ -607,9 +631,9 @@ class TracingService
     /**
      * Add multiple feature flags.
      * If called again, new data is merged with existing flags (newer variants take precedence).
-     * 
+     *
      * @param FeatureFlag[] $flags
-     * 
+     *
      * @example
      * ```php
      * $stacktracer->addFeatureFlags([
@@ -630,16 +654,16 @@ class TracingService
 
     /**
      * Remove a single feature flag.
-     * 
+     *
      * @param string $name Flag name to remove
      */
     public function clearFeatureFlag(string $name): void
     {
         $this->featureFlags = array_values(array_filter(
             $this->featureFlags,
-            fn($f) => $f->getName() !== $name
+            fn ($f) => $f->getName() !== $name
         ));
-        
+
         if ($this->currentTrace !== null) {
             $this->currentTrace->clearFeatureFlag($name);
         }
@@ -651,7 +675,7 @@ class TracingService
     public function clearFeatureFlags(): void
     {
         $this->featureFlags = [];
-        
+
         if ($this->currentTrace !== null) {
             $this->currentTrace->clearFeatureFlags();
         }
@@ -659,7 +683,7 @@ class TracingService
 
     /**
      * Get all active feature flags.
-     * 
+     *
      * @return FeatureFlag[]
      */
     public function getFeatureFlags(): array
@@ -716,7 +740,7 @@ class TracingService
 
             if ($this->filterVendorFrames && $isVendor) {
                 if ($lastWasVendor) {
-                    $collapsedVendorCount++;
+                    ++$collapsedVendorCount;
                     if (!empty($frames)) {
                         $frames[count($frames) - 1]['collapsed_count'] = $collapsedVendorCount;
                     }
@@ -749,7 +773,7 @@ class TracingService
             }
 
             $frames[] = $frameData;
-            $frameCount++;
+            ++$frameCount;
         }
 
         return $frames;
@@ -792,7 +816,7 @@ class TracingService
 
         $codeLines = [];
         $errorIdx = null;
-        for ($i = $start; $i < $end; $i++) {
+        for ($i = $start; $i < $end; ++$i) {
             $codeLines[] = rtrim($lines[$i]);
             if (($i + 1) === $line) {
                 $errorIdx = count($codeLines) - 1;
@@ -805,7 +829,7 @@ class TracingService
         return [
             $start + 1,      // Starting line number
             $codeLines,      // Array of code strings
-            $errorIdx        // Index of error line (0-based)
+            $errorIdx,        // Index of error line (0-based)
         ];
     }
 

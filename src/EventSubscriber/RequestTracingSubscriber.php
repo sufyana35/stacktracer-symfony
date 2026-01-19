@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Stacktracer\SymfonyBundle\EventSubscriber;
 
 use Stacktracer\SymfonyBundle\Model\Breadcrumb;
@@ -14,13 +16,21 @@ use Symfony\Component\HttpKernel\KernelEvents;
 
 /**
  * Subscribes to request lifecycle events to create request traces.
- * Supports distributed tracing via W3C traceparent header.
+ *
+ * Automatically traces HTTP requests with support for distributed tracing
+ * via W3C traceparent header. Creates spans, captures request/response data,
+ * and links all data by trace/span IDs.
+ *
+ * @author Stacktracer <hello@stacktracer.io>
  */
-class RequestTracingSubscriber implements EventSubscriberInterface
+final class RequestTracingSubscriber implements EventSubscriberInterface
 {
     private TracingService $tracing;
+
     private array $excludePatterns;
+
     private bool $shouldTrace = false;
+
     private ?Span $requestSpan = null;
 
     public function __construct(TracingService $tracing, array $excludePatterns = [])
@@ -145,7 +155,7 @@ class RequestTracingSubscriber implements EventSubscriberInterface
         if ($this->requestSpan) {
             $this->requestSpan->setAttribute('http.status_code', $statusCode);
             $this->requestSpan->setAttribute('http.response_content_length', $response->headers->get('Content-Length'));
-            
+
             if ($statusCode >= 400) {
                 $this->requestSpan->setError(sprintf('HTTP %d', $statusCode));
             } else {
@@ -184,14 +194,14 @@ class RequestTracingSubscriber implements EventSubscriberInterface
                 $this->tracing->endSpan($this->requestSpan);
                 $this->requestSpan = null;
             }
-            
+
             $this->tracing->endTrace();
             $this->shouldTrace = false;
         }
     }
 
     /**
-     * Essential headers to capture (allowlist for optimization)
+     * Essential headers to capture (allowlist for optimization).
      */
     private const ESSENTIAL_HEADERS = [
         'host',
@@ -223,6 +233,7 @@ class RequestTracingSubscriber implements EventSubscriberInterface
             }
             $compacted[$name] = count($values) === 1 ? $values[0] : $values;
         }
+
         return $compacted;
     }
 }

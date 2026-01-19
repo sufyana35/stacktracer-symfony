@@ -1,17 +1,26 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Stacktracer\SymfonyBundle\Util;
 
 /**
  * Fingerprinting utility for deduplication and grouping of traces.
- * 
- * Provides consistent hashing for:
+ *
+ * Provides consistent hashing using xxHash3 (xxh3) for fast, collision-resistant
+ * fingerprints. Used for deduplication, grouping similar errors, and cost optimization
+ * by storing fingerprints instead of full stack traces on repeats.
+ *
+ * Fingerprinting strategies:
  * - Stack traces (group similar errors)
  * - Exception messages (normalize variable data)
  * - Request paths (group similar routes)
  * - Log messages (deduplicate logs)
+ * - Breadcrumb trails (identify unique user paths)
+ *
+ * @author Stacktracer <hello@stacktracer.io>
  */
-class Fingerprint
+final class Fingerprint
 {
     /**
      * Compute a fingerprint for an exception.
@@ -27,7 +36,7 @@ class Fingerprint
 
         // Add top stack frames
         $trace = $exception->getTrace();
-        for ($i = 0; $i < min($stackDepth, count($trace)); $i++) {
+        for ($i = 0; $i < min($stackDepth, count($trace)); ++$i) {
             $frame = $trace[$i];
             $components[] = self::frameSignature($frame);
         }
@@ -84,7 +93,7 @@ class Fingerprint
             }
 
             $signatures[] = self::frameSignature($frame);
-            $count++;
+            ++$count;
 
             if ($count >= $maxFrames) {
                 break;
@@ -158,14 +167,14 @@ class Fingerprint
     public static function request(string $method, string $path, ?int $statusCode = null): string
     {
         $normalizedPath = self::normalizePath($path);
-        
+
         $components = [
             strtoupper($method),
             $normalizedPath,
         ];
 
         if ($statusCode !== null) {
-            $components[] = (string)$statusCode;
+            $components[] = (string) $statusCode;
         }
 
         return self::hash(implode('|', $components));
@@ -198,13 +207,13 @@ class Fingerprint
     public static function logMessage(string $message, ?string $channel = null, ?string $level = null): string
     {
         $normalized = self::normalizeMessage($message);
-        
+
         $components = [$normalized];
-        
+
         if ($channel) {
             $components[] = $channel;
         }
-        
+
         if ($level) {
             $components[] = $level;
         }
@@ -266,7 +275,8 @@ class Fingerprint
             if (is_array($value)) {
                 return json_encode($value);
             }
-            return (string)$value;
+
+            return (string) $value;
         }, $fields);
 
         return self::hash(implode('|', $normalized));
@@ -285,10 +295,10 @@ class Fingerprint
         // Simple byte comparison for hash similarity
         $same = 0;
         $len = min(strlen($fp1), strlen($fp2));
-        
-        for ($i = 0; $i < $len; $i++) {
+
+        for ($i = 0; $i < $len; ++$i) {
             if ($fp1[$i] === $fp2[$i]) {
-                $same++;
+                ++$same;
             }
         }
 

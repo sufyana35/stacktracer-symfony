@@ -1,20 +1,30 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Stacktracer\SymfonyBundle\Handler;
 
 use Monolog\Handler\AbstractProcessingHandler;
-use Monolog\LogRecord;
 use Monolog\Level;
+use Monolog\LogRecord;
 use Stacktracer\SymfonyBundle\Model\LogEntry;
 use Stacktracer\SymfonyBundle\Service\TracingService;
 
 /**
  * Monolog handler that captures logs and links them to the current span.
+ *
+ * Integrates with Monolog to automatically capture log entries and attach them
+ * to the current trace/span for unified observability. Supports filtering by
+ * log level and channel.
+ *
+ * @author Stacktracer <hello@stacktracer.io>
  */
-class MonologHandler extends AbstractProcessingHandler
+final class MonologHandler extends AbstractProcessingHandler
 {
     private TracingService $tracingService;
+
     private bool $captureContext;
+
     private array $excludeChannels;
 
     public function __construct(

@@ -1,13 +1,14 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Stacktracer\SymfonyBundle\Model;
 
-use Stacktracer\SymfonyBundle\Model\FeatureFlag;
 use Stacktracer\SymfonyBundle\Util\Fingerprint;
 
 /**
  * Represents a single trace entry with OTEL-compatible span data.
- * 
+ *
  * @see https://opentelemetry.io/docs/concepts/signals/traces/
  */
 class Trace implements \JsonSerializable
@@ -24,37 +25,49 @@ class Trace implements \JsonSerializable
     public const LEVEL_FATAL = 'fatal';
 
     private string $id;
+
     private string $type;
+
     private string $level;
+
     private string $message;
+
     private array $context;
+
     private array $tags;
-    
+
     /** @var Breadcrumb[] */
     private array $breadcrumbs;
-    
+
     /** @var LogEntry[] */
     private array $logs;
-    
+
     /** @var Span[] */
     private array $spans;
-    
+
     /** @var FeatureFlag[] */
     private array $featureFlags;
-    
+
     private ?array $request;
+
     private ?array $exception;
+
     private ?array $performance;
+
     private float $timestamp;
+
     private ?float $duration;
-    
+
     // OTEL Trace Context
     private ?string $traceId;
+
     private ?string $spanId;
+
     private ?string $parentSpanId;
-    
+
     // Fingerprinting for deduplication
     private ?string $fingerprint;
+
     private ?string $groupKey;
 
     public function __construct(
@@ -123,24 +136,28 @@ class Trace implements \JsonSerializable
     public function setDuration(float $duration): self
     {
         $this->duration = $duration;
+
         return $this;
     }
 
     public function setMessage(string $message): self
     {
         $this->message = $message;
+
         return $this;
     }
 
     public function setLevel(string $level): self
     {
         $this->level = $level;
+
         return $this;
     }
 
     public function addTag(string $key, string $value): self
     {
         $this->tags[$key] = $value;
+
         return $this;
     }
 
@@ -156,6 +173,7 @@ class Trace implements \JsonSerializable
         $breadcrumb->setSpanId($this->spanId);
         $breadcrumb->captureSource(2);
         $this->breadcrumbs[] = $breadcrumb;
+
         return $this;
     }
 
@@ -166,6 +184,7 @@ class Trace implements \JsonSerializable
             $breadcrumb->setSpanId($this->spanId);
         }
         $this->breadcrumbs[] = $breadcrumb;
+
         return $this;
     }
 
@@ -183,6 +202,7 @@ class Trace implements \JsonSerializable
             $log->setSpanId($this->spanId);
         }
         $this->logs[] = $log;
+
         return $this;
     }
 
@@ -196,12 +216,14 @@ class Trace implements \JsonSerializable
     public function addSpan(Span $span): self
     {
         $this->spans[] = $span;
+
         return $this;
     }
 
     public function setSpans(array $spans): self
     {
         $this->spans = $spans;
+
         return $this;
     }
 
@@ -221,10 +243,12 @@ class Trace implements \JsonSerializable
         foreach ($this->featureFlags as $i => $existing) {
             if ($existing->getName() === $flag->getName()) {
                 $this->featureFlags[$i] = $flag;
+
                 return $this;
             }
         }
         $this->featureFlags[] = $flag;
+
         return $this;
     }
 
@@ -236,6 +260,7 @@ class Trace implements \JsonSerializable
         foreach ($flags as $flag) {
             $this->addFeatureFlag($flag);
         }
+
         return $this;
     }
 
@@ -246,8 +271,9 @@ class Trace implements \JsonSerializable
     {
         $this->featureFlags = array_values(array_filter(
             $this->featureFlags,
-            fn($f) => $f->getName() !== $name
+            fn ($f) => $f->getName() !== $name
         ));
+
         return $this;
     }
 
@@ -257,12 +283,13 @@ class Trace implements \JsonSerializable
     public function clearFeatureFlags(): self
     {
         $this->featureFlags = [];
+
         return $this;
     }
 
     /**
      * Get all feature flags.
-     * 
+     *
      * @return FeatureFlag[]
      */
     public function getFeatureFlags(): array
@@ -272,12 +299,13 @@ class Trace implements \JsonSerializable
 
     /**
      * Set feature flags (replaces existing).
-     * 
+     *
      * @param FeatureFlag[] $flags
      */
     public function setFeatureFlags(array $flags): self
     {
         $this->featureFlags = $flags;
+
         return $this;
     }
 
@@ -291,6 +319,7 @@ class Trace implements \JsonSerializable
     public function setTraceId(string $traceId): self
     {
         $this->traceId = $traceId;
+
         return $this;
     }
 
@@ -302,6 +331,7 @@ class Trace implements \JsonSerializable
     public function setSpanId(?string $spanId): self
     {
         $this->spanId = $spanId;
+
         return $this;
     }
 
@@ -313,6 +343,7 @@ class Trace implements \JsonSerializable
     public function setParentSpanId(?string $parentSpanId): self
     {
         $this->parentSpanId = $parentSpanId;
+
         return $this;
     }
 
@@ -326,6 +357,7 @@ class Trace implements \JsonSerializable
     public function setFingerprint(string $fingerprint): self
     {
         $this->fingerprint = $fingerprint;
+
         return $this;
     }
 
@@ -337,6 +369,7 @@ class Trace implements \JsonSerializable
     public function setGroupKey(string $groupKey): self
     {
         $this->groupKey = $groupKey;
+
         return $this;
     }
 
@@ -359,7 +392,7 @@ class Trace implements \JsonSerializable
                 Fingerprint::normalizeMessage($this->message),
             ]);
         }
-        
+
         return $this->fingerprint;
     }
 
@@ -379,13 +412,14 @@ class Trace implements \JsonSerializable
                 $this->level,
             ]);
         }
-        
+
         return $this->groupKey;
     }
 
     public function setRequest(array $request): self
     {
         $this->request = $request;
+
         return $this;
     }
 
@@ -397,6 +431,7 @@ class Trace implements \JsonSerializable
     public function setException(array $exception): self
     {
         $this->exception = $exception;
+
         return $this;
     }
 
@@ -408,6 +443,7 @@ class Trace implements \JsonSerializable
     public function setPerformance(array $performance): self
     {
         $this->performance = $performance;
+
         return $this;
     }
 
@@ -419,6 +455,7 @@ class Trace implements \JsonSerializable
     public function setContext(array $context): self
     {
         $this->context = array_merge($this->context, $context);
+
         return $this;
     }
 
@@ -443,18 +480,18 @@ class Trace implements \JsonSerializable
             'type' => $this->type,
             'level' => $this->level,
             'message' => $this->message,
-            
+
             // Single timestamp format (unix nano) - receiver can derive others
-            'ts' => (int)($this->timestamp * 1e9),
-            
+            'ts' => (int) ($this->timestamp * 1e9),
+
             // OTEL Trace Context
             'trace_id' => $this->traceId,
-            
+
             // Fingerprinting for deduplication and grouping
             'fp' => $this->fingerprint,
             'gk' => $this->groupKey,
         ];
-        
+
         // Only include non-empty arrays/values
         if (!empty($this->context)) {
             $data['context'] = $this->context;
@@ -480,26 +517,26 @@ class Trace implements \JsonSerializable
         if ($this->parentSpanId !== null) {
             $data['parent_span_id'] = $this->parentSpanId;
         }
-        
+
         // Only include breadcrumbs if present
         if (!empty($this->breadcrumbs)) {
-            $data['breadcrumbs'] = array_map(fn($b) => $b instanceof Breadcrumb ? $b->jsonSerialize() : $b, $this->breadcrumbs);
+            $data['breadcrumbs'] = array_map(fn ($b) => $b instanceof Breadcrumb ? $b->jsonSerialize() : $b, $this->breadcrumbs);
             $data['bc_fp'] = Fingerprint::breadcrumbTrail($this->breadcrumbs);
         }
-        
+
         // Only include logs if present
         if (!empty($this->logs)) {
-            $data['logs'] = array_map(fn($l) => $l instanceof LogEntry ? $l->jsonSerialize() : $l, $this->logs);
+            $data['logs'] = array_map(fn ($l) => $l instanceof LogEntry ? $l->jsonSerialize() : $l, $this->logs);
         }
-        
+
         // Only include spans if present - with deduplication flag
         if (!empty($this->spans)) {
-            $data['spans'] = array_map(fn($s) => $s instanceof Span ? $s->jsonSerialize(true) : $s, $this->spans);
+            $data['spans'] = array_map(fn ($s) => $s instanceof Span ? $s->jsonSerialize(true) : $s, $this->spans);
         }
-        
+
         // Only include feature flags if present
         if (!empty($this->featureFlags)) {
-            $data['flags'] = array_map(fn($f) => $f->jsonSerialize(), $this->featureFlags);
+            $data['flags'] = array_map(fn ($f) => $f->jsonSerialize(), $this->featureFlags);
         }
 
         return $data;

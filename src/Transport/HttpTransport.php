@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Stacktracer\SymfonyBundle\Transport;
 
 use Psr\Log\LoggerInterface;
@@ -9,27 +11,40 @@ use Stacktracer\SymfonyBundle\Model\Trace;
 /**
  * HTTP transport for sending traces to a remote API.
  *
+ * Production-ready transport implementation with batching, compression,
+ * retry logic with exponential backoff, and queue overflow protection.
+ *
  * Features:
  * - Batching (reduces HTTP overhead)
  * - Compression (gzip)
  * - Retry with exponential backoff
  * - Queue overflow protection
+ * - Graceful shutdown handling
+ *
+ * @author Stacktracer <hello@stacktracer.io>
  */
-class HttpTransport implements TransportInterface
+final class HttpTransport implements TransportInterface
 {
     private string $endpoint;
+
     private string $apiKey;
+
     private LoggerInterface $logger;
 
     private int $batchSize;
+
     private int $flushIntervalMs;
+
     private int $maxQueueSize;
 
     private array $queue = [];
+
     private float $lastFlush;
 
     private int $timeout;
+
     private bool $compress;
+
     private int $maxRetries;
 
     public function __construct(
@@ -97,6 +112,7 @@ class HttpTransport implements TransportInterface
         }
 
         $elapsed = (microtime(true) * 1000) - $this->lastFlush;
+
         return $elapsed >= $this->flushIntervalMs;
     }
 
@@ -107,7 +123,7 @@ class HttpTransport implements TransportInterface
             'meta' => [
                 'sdk' => 'stacktracer-symfony',
                 'version' => '1.0.0',
-                'sent_at' => (int)(microtime(true) * 1000),
+                'sent_at' => (int) (microtime(true) * 1000),
                 'count' => count($batch),
             ],
         ];
@@ -130,12 +146,13 @@ class HttpTransport implements TransportInterface
 
         $headers[] = 'Content-Length: ' . strlen($body);
 
-        for ($attempt = 1; $attempt <= $this->maxRetries; $attempt++) {
+        for ($attempt = 1; $attempt <= $this->maxRetries; ++$attempt) {
             try {
                 $result = $this->doHttpRequest($body, $headers);
 
                 if ($result['status'] >= 200 && $result['status'] < 300) {
                     $this->logger->debug('Sent {count} traces to API', ['count' => count($batch)]);
+
                     return true;
                 }
 
@@ -144,6 +161,7 @@ class HttpTransport implements TransportInterface
                         'status' => $result['status'],
                         'response' => substr($result['body'], 0, 200),
                     ]);
+
                     return false;
                 }
 
@@ -162,7 +180,7 @@ class HttpTransport implements TransportInterface
             }
 
             if ($attempt < $this->maxRetries) {
-                usleep((int)(pow(2, $attempt) * 100000));
+                usleep((int) (pow(2, $attempt) * 100000));
             }
         }
 

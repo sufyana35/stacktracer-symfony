@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Stacktracer\SymfonyBundle\DependencyInjection;
 
 use Symfony\Component\Config\FileLocator;
@@ -7,8 +9,24 @@ use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Extension\Extension;
 use Symfony\Component\DependencyInjection\Loader\YamlFileLoader;
 
-class StacktracerExtension extends Extension
+/**
+ * Stacktracer Extension - Loads and manages bundle configuration.
+ *
+ * Processes configuration from stacktracer.yaml and registers services
+ * with the dependency injection container.
+ *
+ * @author Stacktracer <hello@stacktracer.io>
+ */
+final class StacktracerExtension extends Extension
 {
+    /**
+     * Loads bundle configuration and registers services.
+     *
+     * @param array<int, array<string, mixed>> $configs Configuration values from stacktracer.yaml
+     * @param ContainerBuilder $container Service container
+     *
+     * @throws \Exception When configuration is invalid or services cannot be loaded
+     */
     public function load(array $configs, ContainerBuilder $container): void
     {
         $configuration = new Configuration();

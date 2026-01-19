@@ -1,10 +1,12 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Stacktracer\SymfonyBundle\Model;
 
 /**
  * OpenTelemetry-compatible Span representing a unit of work.
- * 
+ *
  * @see https://opentelemetry.io/docs/concepts/signals/traces/#spans
  */
 class Span implements \JsonSerializable
@@ -22,37 +24,46 @@ class Span implements \JsonSerializable
     public const STATUS_ERROR = 'ERROR';
 
     private SpanContext $context;
+
     private ?string $parentSpanId;
+
     private string $name;
+
     private string $kind;
+
     private float $startTime;
+
     private ?float $endTime;
+
     private string $status;
+
     private ?string $statusMessage;
-    
+
     /** @var array<string, mixed> OTEL attributes */
     private array $attributes;
-    
+
     /** @var SpanEvent[] */
     private array $events;
-    
+
     /** @var SpanLink[] */
     private array $links;
-    
+
     /** @var Breadcrumb[] Linked breadcrumbs */
     private array $breadcrumbs;
-    
+
     /** @var LogEntry[] Linked log entries */
     private array $logs;
-    
+
     /** @var StackFrame[]|null Stack trace if applicable */
     private ?array $stackTrace;
-    
+
     /** @var string|null Fingerprint for deduplication */
     private ?string $fingerprint;
 
     private string $serviceName;
+
     private string $serviceVersion;
+
     private array $resource;
 
     public function __construct(
@@ -111,6 +122,7 @@ class Span implements \JsonSerializable
     public function setName(string $name): self
     {
         $this->name = $name;
+
         return $this;
     }
 
@@ -134,12 +146,14 @@ class Span implements \JsonSerializable
         if ($this->endTime === null) {
             return null;
         }
+
         return round(($this->endTime - $this->startTime) * 1000, 3);
     }
 
     public function end(?float $endTime = null): self
     {
         $this->endTime = $endTime ?? microtime(true);
+
         return $this;
     }
 
@@ -154,6 +168,7 @@ class Span implements \JsonSerializable
     {
         $this->status = $status;
         $this->statusMessage = $message;
+
         return $this;
     }
 
@@ -182,6 +197,7 @@ class Span implements \JsonSerializable
     public function setAttribute(string $key, mixed $value): self
     {
         $this->attributes[$key] = $value;
+
         return $this;
     }
 
@@ -190,6 +206,7 @@ class Span implements \JsonSerializable
         foreach ($attributes as $key => $value) {
             $this->setAttribute($key, $value);
         }
+
         return $this;
     }
 
@@ -208,6 +225,7 @@ class Span implements \JsonSerializable
     public function addEvent(string $name, array $attributes = [], ?float $timestamp = null): self
     {
         $this->events[] = new SpanEvent($name, $attributes, $timestamp);
+
         return $this;
     }
 
@@ -221,6 +239,7 @@ class Span implements \JsonSerializable
     public function addLink(SpanContext $context, array $attributes = []): self
     {
         $this->links[] = new SpanLink($context, $attributes);
+
         return $this;
     }
 
@@ -237,6 +256,7 @@ class Span implements \JsonSerializable
         $breadcrumb->setSpanId($this->getSpanId());
         $breadcrumb->setTraceId($this->getTraceId());
         $this->breadcrumbs[] = $breadcrumb;
+
         return $this;
     }
 
@@ -248,6 +268,7 @@ class Span implements \JsonSerializable
     ): Breadcrumb {
         $breadcrumb = new Breadcrumb($category, $message, $level, $data);
         $this->addBreadcrumb($breadcrumb);
+
         return $breadcrumb;
     }
 
@@ -263,6 +284,7 @@ class Span implements \JsonSerializable
         $log->setSpanId($this->getSpanId());
         $log->setTraceId($this->getTraceId());
         $this->logs[] = $log;
+
         return $this;
     }
 
@@ -280,6 +302,7 @@ class Span implements \JsonSerializable
     {
         $this->stackTrace = $stackTrace;
         $this->fingerprint = StackFrame::computeStackFingerprint($stackTrace);
+
         return $this;
     }
 
@@ -296,6 +319,7 @@ class Span implements \JsonSerializable
     public function setFingerprint(string $fingerprint): self
     {
         $this->fingerprint = $fingerprint;
+
         return $this;
     }
 
@@ -304,6 +328,7 @@ class Span implements \JsonSerializable
     public function setResource(array $resource): self
     {
         $this->resource = $resource;
+
         return $this;
     }
 
@@ -327,6 +352,7 @@ class Span implements \JsonSerializable
     public function createChild(string $name, string $kind = self::KIND_INTERNAL): self
     {
         $childContext = $this->context->createChild();
+
         return new self(
             $name,
             $kind,
@@ -367,26 +393,26 @@ class Span implements \JsonSerializable
             'span_id' => $this->getSpanId(),
             'name' => $this->name,
             'kind' => $this->kind,
-            'start_ts' => (int)($this->startTime * 1e9),
+            'start_ts' => (int) ($this->startTime * 1e9),
             'status' => $this->status,
         ];
-        
+
         // Only include parent if set
         if ($this->parentSpanId !== null) {
             $data['parent_span_id'] = $this->parentSpanId;
         }
-        
+
         // Only include end time and duration if ended
         if ($this->endTime !== null) {
-            $data['end_ts'] = (int)($this->endTime * 1e9);
+            $data['end_ts'] = (int) ($this->endTime * 1e9);
             $data['duration_ms'] = $this->getDurationMs();
         }
-        
+
         // Status message only if set
         if ($this->statusMessage !== null) {
             $data['status_msg'] = $this->statusMessage;
         }
-        
+
         // Attributes - optionally deduplicate from trace-level request data
         $attrs = $this->attributes;
         if ($deduplicate) {
@@ -400,34 +426,35 @@ class Span implements \JsonSerializable
             }
         }
         // Filter out null values from attributes
-        $attrs = array_filter($attrs, fn($v) => $v !== null);
+        $attrs = array_filter($attrs, fn ($v) => $v !== null);
         if (!empty($attrs)) {
             $data['attrs'] = $attrs;
         }
-        
+
         // Events - only if present, compact format
         if (!empty($this->events)) {
-            $data['events'] = array_map(function($e) {
+            $data['events'] = array_map(function ($e) {
                 $eventData = $e->jsonSerialize();
                 // Remove verbose stacktrace string from attrs
                 if (isset($eventData['attrs']['exception.stacktrace'])) {
                     unset($eventData['attrs']['exception.stacktrace']);
                 }
+
                 return $eventData;
             }, $this->events);
         }
-        
+
         // Links - only if present
         if (!empty($this->links)) {
-            $data['links'] = array_map(fn($l) => $l->jsonSerialize(), $this->links);
+            $data['links'] = array_map(fn ($l) => $l->jsonSerialize(), $this->links);
         }
-        
+
         // Resource - compact
         $data['svc'] = $this->serviceName;
         if ($this->serviceVersion !== '0.0.0') {
             $data['svc_ver'] = $this->serviceVersion;
         }
-        
+
         // Fingerprint only if set
         if ($this->fingerprint !== null) {
             $data['fp'] = $this->fingerprint;

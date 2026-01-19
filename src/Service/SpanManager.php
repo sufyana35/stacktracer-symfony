@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Stacktracer\SymfonyBundle\Service;
 
 use Stacktracer\SymfonyBundle\Model\Span;
@@ -7,21 +9,27 @@ use Stacktracer\SymfonyBundle\Model\SpanContext;
 
 /**
  * Manages the current span context stack for distributed tracing.
- * Thread-safe span context propagation.
+ *
+ * Handles span lifecycle, parent-child relationships, and trace context propagation
+ * for OpenTelemetry-compatible distributed tracing. Thread-safe span context propagation.
+ *
+ * @author Stacktracer <hello@stacktracer.io>
  */
-class SpanManager
+final class SpanManager
 {
     /** @var Span[] Stack of active spans */
     private array $spanStack = [];
-    
+
     /** @var Span[] All spans in current trace */
     private array $spans = [];
-    
+
     /** @var \SplObjectStorage Tracks exceptions already recorded */
     private \SplObjectStorage $recordedExceptions;
-    
+
     private ?SpanContext $rootContext = null;
+
     private string $serviceName;
+
     private string $serviceVersion;
 
     public function __construct(
@@ -58,7 +66,7 @@ class SpanManager
         ?SpanContext $context = null
     ): Span {
         $parentSpan = $this->getCurrentSpan();
-        
+
         if ($context === null) {
             if ($parentSpan) {
                 // Create child of current span
@@ -74,7 +82,7 @@ class SpanManager
         }
 
         $parentSpanId = $parentSpan ? $parentSpan->getSpanId() : null;
-        
+
         $span = new Span(
             $name,
             $kind,
@@ -128,8 +136,9 @@ class SpanManager
         if ($this->rootContext) {
             return $this->rootContext->getTraceId();
         }
-        
+
         $span = $this->getCurrentSpan();
+
         return $span ? $span->getTraceId() : null;
     }
 
@@ -139,6 +148,7 @@ class SpanManager
     public function getCurrentSpanId(): ?string
     {
         $span = $this->getCurrentSpan();
+
         return $span ? $span->getSpanId() : null;
     }
 
@@ -155,7 +165,7 @@ class SpanManager
      */
     public function getCompletedSpans(): array
     {
-        return array_filter($this->spans, fn(Span $s) => $s->isEnded());
+        return array_filter($this->spans, fn (Span $s) => $s->isEnded());
     }
 
     /**
@@ -198,10 +208,11 @@ class SpanManager
     public function withSpan(string $name, callable $callback, string $kind = Span::KIND_INTERNAL): mixed
     {
         $span = $this->startSpan($name, $kind);
-        
+
         try {
             $result = $callback($span);
             $span->setOk();
+
             return $result;
         } catch (\Throwable $e) {
             // Only record exception if not already recorded (prevents duplicates on bubble-up)
@@ -224,11 +235,11 @@ class SpanManager
         if ($span) {
             return $span->getContext()->toTraceparent();
         }
-        
+
         if ($this->rootContext) {
             return $this->rootContext->toTraceparent();
         }
-        
+
         return null;
     }
 
@@ -251,7 +262,7 @@ class SpanManager
         // Build tree
         foreach ($this->spans as $span) {
             $parentId = $span->getParentSpanId();
-            
+
             if ($parentId && isset($spanMap[$parentId])) {
                 $spanMap[$parentId]['children'][] = &$spanMap[$span->getSpanId()];
             } else {
@@ -273,7 +284,7 @@ class SpanManager
                 'name' => $this->serviceName,
                 'version' => $this->serviceVersion,
             ],
-            'spans' => array_map(fn(Span $s) => $s->jsonSerialize(), $this->spans),
+            'spans' => array_map(fn (Span $s) => $s->jsonSerialize(), $this->spans),
             'span_count' => count($this->spans),
         ];
     }

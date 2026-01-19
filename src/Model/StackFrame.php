@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Stacktracer\SymfonyBundle\Model;
 
 /**
@@ -8,14 +10,23 @@ namespace Stacktracer\SymfonyBundle\Model;
 class StackFrame implements \JsonSerializable
 {
     private string $file;
+
     private int $line;
+
     private ?string $function;
+
     private ?string $class;
+
     private ?string $type;
+
     private bool $isVendor;
+
     private ?array $codeContext;
+
     private ?int $collapsedCount;
+
     private string $fingerprint;
+
     private string $fileHash;
 
     public function __construct(
@@ -36,7 +47,7 @@ class StackFrame implements \JsonSerializable
         $this->isVendor = $isVendor;
         $this->codeContext = $codeContext;
         $this->collapsedCount = $collapsedCount;
-        
+
         $this->fingerprint = $this->computeFingerprint();
         $this->fileHash = $this->computeFileHash();
     }
@@ -63,7 +74,7 @@ class StackFrame implements \JsonSerializable
     {
         $frames = [];
         $trace = $exception->getTrace();
-        
+
         // Add exception location as first frame
         $frames[] = new self(
             $exception->getFile(),
@@ -92,7 +103,7 @@ class StackFrame implements \JsonSerializable
                 $isVendor
             );
 
-            $count++;
+            ++$count;
         }
 
         return $frames;
@@ -137,6 +148,7 @@ class StackFrame implements \JsonSerializable
         if (preg_match('#/(?:src|app|vendor)/.*$#', $path, $matches)) {
             return $matches[0];
         }
+
         return basename($path);
     }
 
@@ -148,20 +160,20 @@ class StackFrame implements \JsonSerializable
     {
         $fingerprints = [];
         $count = 0;
-        
+
         foreach ($frames as $frame) {
             if (!$frame instanceof self) {
                 continue;
             }
-            
+
             // Skip vendor frames for fingerprint
             if ($frame->isVendor()) {
                 continue;
             }
-            
+
             $fingerprints[] = $frame->getFingerprint();
-            $count++;
-            
+            ++$count;
+
             if ($count >= $maxFrames) {
                 break;
             }
@@ -189,15 +201,15 @@ class StackFrame implements \JsonSerializable
     public static function computeStackGroupKey(array $frames): string
     {
         $components = [];
-        
+
         foreach ($frames as $frame) {
             if (!$frame instanceof self || $frame->isVendor()) {
                 continue;
             }
-            
+
             // Use only file and function for grouping
             $components[] = $frame->getFileHash() . ':' . ($frame->getFunction() ?? '');
-            
+
             if (count($components) >= 5) {
                 break;
             }
@@ -246,6 +258,7 @@ class StackFrame implements \JsonSerializable
     public function setCodeContext(array $context): self
     {
         $this->codeContext = $context;
+
         return $this;
     }
 
@@ -257,6 +270,7 @@ class StackFrame implements \JsonSerializable
     public function setCollapsedCount(int $count): self
     {
         $this->collapsedCount = $count;
+
         return $this;
     }
 
@@ -278,11 +292,11 @@ class StackFrame implements \JsonSerializable
         if ($this->class && $this->function) {
             return $this->class . ($this->type ?? '::') . $this->function . '()';
         }
-        
+
         if ($this->function) {
             return $this->function . '()';
         }
-        
+
         return '[main]';
     }
 
@@ -292,31 +306,31 @@ class StackFrame implements \JsonSerializable
             'file' => $this->file,
             'line' => $this->line,
         ];
-        
+
         if ($this->function !== null) {
             $data['fn'] = $this->function;
         }
-        
+
         if ($this->class !== null) {
             $data['cls'] = $this->class;
             if ($this->type !== null) {
                 $data['type'] = $this->type;
             }
         }
-        
+
         // Only include vendor flag if true (default assumption is user code)
         if ($this->isVendor) {
             $data['vendor'] = true;
         }
-        
+
         if ($this->codeContext !== null) {
             $data['ctx'] = $this->codeContext;
         }
-        
+
         if ($this->collapsedCount !== null && $this->collapsedCount > 1) {
             $data['collapsed'] = $this->collapsedCount;
         }
-        
+
         return $data;
     }
 }

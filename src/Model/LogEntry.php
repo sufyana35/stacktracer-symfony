@@ -1,10 +1,12 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Stacktracer\SymfonyBundle\Model;
 
 /**
  * LogEntry - structured log record linked to spans.
- * 
+ *
  * @see https://opentelemetry.io/docs/concepts/signals/logs/
  */
 class LogEntry implements \JsonSerializable
@@ -33,24 +35,34 @@ class LogEntry implements \JsonSerializable
     ];
 
     private string $id;
+
     private float $timestamp;
+
     private int $severityNumber;
+
     private string $severityText;
+
     private string $body;
+
     private array $attributes;
+
     private array $resource;
-    
+
     // Span linking
     private ?string $spanId;
+
     private ?string $traceId;
-    
+
     // Source location
     private ?string $sourceFile;
+
     private ?int $sourceLine;
+
     private ?string $sourceFunction;
-    
+
     // Logger info
     private ?string $loggerName;
+
     private ?string $channel;
 
     public function __construct(
@@ -107,6 +119,7 @@ class LogEntry implements \JsonSerializable
     public function setAttribute(string $key, mixed $value): self
     {
         $this->attributes[$key] = $value;
+
         return $this;
     }
 
@@ -115,6 +128,7 @@ class LogEntry implements \JsonSerializable
     public function setSpanId(?string $spanId): self
     {
         $this->spanId = $spanId;
+
         return $this;
     }
 
@@ -126,6 +140,7 @@ class LogEntry implements \JsonSerializable
     public function setTraceId(?string $traceId): self
     {
         $this->traceId = $traceId;
+
         return $this;
     }
 
@@ -141,6 +156,7 @@ class LogEntry implements \JsonSerializable
         $this->sourceFile = $file;
         $this->sourceLine = $line;
         $this->sourceFunction = $function;
+
         return $this;
     }
 
@@ -159,18 +175,21 @@ class LogEntry implements \JsonSerializable
     public function setLoggerName(string $name): self
     {
         $this->loggerName = $name;
+
         return $this;
     }
 
     public function setChannel(string $channel): self
     {
         $this->channel = $channel;
+
         return $this;
     }
 
     public function setResource(array $resource): self
     {
         $this->resource = $resource;
+
         return $this;
     }
 
@@ -180,7 +199,7 @@ class LogEntry implements \JsonSerializable
     public static function fromMonolog(array $record): self
     {
         $level = strtolower($record['level_name'] ?? $record['level'] ?? 'info');
-        
+
         $entry = new self(
             $record['message'] ?? '',
             $level,
@@ -218,22 +237,22 @@ class LogEntry implements \JsonSerializable
     {
         $data = [
             'id' => $this->id,
-            'ts' => (int)($this->timestamp * 1e9),
+            'ts' => (int) ($this->timestamp * 1e9),
             'sev' => $this->severityNumber,
             'lvl' => $this->severityText,
             'body' => $this->body,
         ];
-        
+
         // Only include non-empty attributes
         if (!empty($this->attributes)) {
             $data['attrs'] = $this->attributes;
         }
-        
+
         // Only include span_id if set
         if ($this->spanId !== null) {
             $data['span_id'] = $this->spanId;
         }
-        
+
         // Only include source if meaningful
         if ($this->sourceFile !== null) {
             $src = ['file' => $this->sourceFile, 'line' => $this->sourceLine];
@@ -242,15 +261,15 @@ class LogEntry implements \JsonSerializable
             }
             $data['src'] = $src;
         }
-        
+
         // Only include channel if set
         if ($this->channel !== null) {
             $data['ch'] = $this->channel;
         }
-        
+
         // Always include fingerprint for deduplication
         $data['fp'] = $this->getFingerprint();
-        
+
         return $data;
     }
 }

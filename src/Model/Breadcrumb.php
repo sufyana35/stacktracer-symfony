@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Stacktracer\SymfonyBundle\Model;
 
 /**
@@ -27,19 +29,27 @@ class Breadcrumb implements \JsonSerializable
     public const LEVEL_FATAL = 'fatal';
 
     private string $id;
+
     private string $category;
+
     private string $message;
+
     private string $level;
+
     private array $data;
+
     private float $timestamp;
-    
+
     // Span linking
     private ?string $spanId;
+
     private ?string $traceId;
-    
+
     // Stack frame reference
     private ?string $sourceFile;
+
     private ?int $sourceLine;
+
     private ?string $sourceFunction;
 
     public function __construct(
@@ -96,6 +106,7 @@ class Breadcrumb implements \JsonSerializable
     public function setSpanId(?string $spanId): self
     {
         $this->spanId = $spanId;
+
         return $this;
     }
 
@@ -107,6 +118,7 @@ class Breadcrumb implements \JsonSerializable
     public function setTraceId(?string $traceId): self
     {
         $this->traceId = $traceId;
+
         return $this;
     }
 
@@ -122,6 +134,7 @@ class Breadcrumb implements \JsonSerializable
         $this->sourceFile = $file;
         $this->sourceLine = $line;
         $this->sourceFunction = $function;
+
         return $this;
     }
 
@@ -129,13 +142,13 @@ class Breadcrumb implements \JsonSerializable
     {
         $trace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, $skipFrames + 1);
         $frame = $trace[$skipFrames] ?? null;
-        
+
         if ($frame) {
             $this->sourceFile = $frame['file'] ?? null;
             $this->sourceLine = $frame['line'] ?? null;
             $this->sourceFunction = $frame['function'] ?? null;
         }
-        
+
         return $this;
     }
 
@@ -175,19 +188,19 @@ class Breadcrumb implements \JsonSerializable
             'cat' => $this->category,
             'msg' => $this->message,
             'lvl' => $this->level,
-            'ts' => (int)($this->timestamp * 1e9),
+            'ts' => (int) ($this->timestamp * 1e9),
         ];
-        
+
         // Only include data if non-empty
         if (!empty($this->data)) {
             $data['data'] = $this->data;
         }
-        
+
         // Only include span_id if set
         if ($this->spanId !== null) {
             $data['span_id'] = $this->spanId;
         }
-        
+
         // Only include source if it's meaningful (not framework internals)
         if ($this->sourceFile !== null && !$this->isFrameworkSource()) {
             $data['src'] = [
@@ -198,15 +211,15 @@ class Breadcrumb implements \JsonSerializable
                 $data['src']['fn'] = $this->sourceFunction;
             }
         }
-        
+
         // Include fingerprint for deduplication
         $data['fp'] = $this->getFingerprint();
-        
+
         return $data;
     }
-    
+
     /**
-     * Check if source is a framework/vendor file (not useful to show)
+     * Check if source is a framework/vendor file (not useful to show).
      */
     private function isFrameworkSource(): bool
     {
@@ -225,6 +238,7 @@ class Breadcrumb implements \JsonSerializable
                 return true;
             }
         }
+
         return false;
     }
 }
