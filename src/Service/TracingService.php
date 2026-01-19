@@ -7,10 +7,12 @@ namespace Stacktracer\SymfonyBundle\Service;
 use Stacktracer\SymfonyBundle\Model\Breadcrumb;
 use Stacktracer\SymfonyBundle\Model\FeatureFlag;
 use Stacktracer\SymfonyBundle\Model\LogEntry;
+use Stacktracer\SymfonyBundle\Model\Server;
 use Stacktracer\SymfonyBundle\Model\Span;
 use Stacktracer\SymfonyBundle\Model\SpanContext;
 use Stacktracer\SymfonyBundle\Model\StackFrame;
 use Stacktracer\SymfonyBundle\Model\Trace;
+use Stacktracer\SymfonyBundle\Model\User;
 use Stacktracer\SymfonyBundle\Transport\TransportInterface;
 use Stacktracer\SymfonyBundle\Util\Fingerprint;
 
@@ -70,6 +72,14 @@ class TracingService
     private string $serviceName;
 
     private string $serviceVersion;
+
+    private ?User $globalUser = null;
+
+    private ?Server $server = null;
+
+    private ?string $release = null;
+
+    private ?string $environment = null;
 
     public function __construct(
         TransportInterface $transport,
@@ -317,6 +327,24 @@ class TracingService
             $this->currentTrace->setFeatureFlags($this->featureFlags);
         }
 
+        // Attach user context
+        if ($this->globalUser !== null) {
+            $this->currentTrace->setUser($this->globalUser);
+        }
+
+        // Attach release and environment
+        if ($this->release !== null) {
+            $this->currentTrace->setRelease($this->release);
+        }
+        if ($this->environment !== null) {
+            $this->currentTrace->setEnvironment($this->environment);
+        }
+
+        // Attach server info
+        if ($this->server !== null) {
+            $this->currentTrace->setServer($this->server);
+        }
+
         // Sync trace ID with span manager
         $rootContext = $this->spanManager->getRootContext();
         if ($rootContext) {
@@ -375,6 +403,24 @@ class TracingService
         // Attach feature flags
         if (!empty($this->featureFlags)) {
             $trace->setFeatureFlags($this->featureFlags);
+        }
+
+        // Attach user context
+        if ($this->globalUser !== null) {
+            $trace->setUser($this->globalUser);
+        }
+
+        // Attach release and environment
+        if ($this->release !== null) {
+            $trace->setRelease($this->release);
+        }
+        if ($this->environment !== null) {
+            $trace->setEnvironment($this->environment);
+        }
+
+        // Attach server info
+        if ($this->server !== null) {
+            $trace->setServer($this->server);
         }
 
         // Capture code context at exception location
@@ -509,6 +555,24 @@ class TracingService
         // Attach feature flags
         if (!empty($this->featureFlags)) {
             $trace->setFeatureFlags($this->featureFlags);
+        }
+
+        // Attach user context
+        if ($this->globalUser !== null) {
+            $trace->setUser($this->globalUser);
+        }
+
+        // Attach release and environment
+        if ($this->release !== null) {
+            $trace->setRelease($this->release);
+        }
+        if ($this->environment !== null) {
+            $trace->setEnvironment($this->environment);
+        }
+
+        // Attach server info
+        if ($this->server !== null) {
+            $trace->setServer($this->server);
         }
 
         // Sync trace ID with span manager
@@ -689,6 +753,141 @@ class TracingService
     public function getFeatureFlags(): array
     {
         return $this->featureFlags;
+    }
+
+    // ========================================
+    // USER CONTEXT
+    // ========================================
+
+    /**
+     * Set the current user context.
+     *
+     * @param User|array<string, mixed> $user user object or array with id, email, username, etc
+     *
+     * @example
+     * ```php
+     * $stacktracer->setUser([
+     *     'id' => $user->getId(),
+     *     'email' => $user->getEmail(),
+     *     'name' => $user->getName(),
+     *     'data' => ['subscription' => 'premium'],
+     * ]);
+     * ```
+     */
+    public function setUser(User|array $user): void
+    {
+        $this->globalUser = $user instanceof User ? $user : User::fromArray($user);
+
+        if ($this->currentTrace !== null) {
+            $this->currentTrace->setUser($this->globalUser);
+        }
+    }
+
+    /**
+     * Get the current user context.
+     */
+    public function getUser(): ?User
+    {
+        return $this->globalUser;
+    }
+
+    /**
+     * Clear the user context.
+     */
+    public function clearUser(): void
+    {
+        $this->globalUser = null;
+    }
+
+    // ========================================
+    // RELEASE & ENVIRONMENT
+    // ========================================
+
+    /**
+     * Set the release/version identifier.
+     *
+     * @param string $release Release version (e.g., 'v2.3.1', 'abc123', '2024.01.15')
+     *
+     * @example
+     * ```php
+     * $stacktracer->setRelease('v2.3.1');
+     * $stacktracer->setRelease(getenv('GIT_COMMIT_SHA'));
+     * ```
+     */
+    public function setRelease(string $release): void
+    {
+        $this->release = $release;
+
+        if ($this->currentTrace !== null) {
+            $this->currentTrace->setRelease($release);
+        }
+    }
+
+    /**
+     * Get the current release.
+     */
+    public function getRelease(): ?string
+    {
+        return $this->release;
+    }
+
+    /**
+     * Set the environment name.
+     *
+     * @param string $environment Environment name (e.g., 'production', 'staging', 'development')
+     *
+     * @example
+     * ```php
+     * $stacktracer->setEnvironment('production');
+     * ```
+     */
+    public function setEnvironment(string $environment): void
+    {
+        $this->environment = $environment;
+
+        if ($this->currentTrace !== null) {
+            $this->currentTrace->setEnvironment($environment);
+        }
+    }
+
+    /**
+     * Get the current environment.
+     */
+    public function getEnvironment(): ?string
+    {
+        return $this->environment;
+    }
+
+    // ========================================
+    // SERVER INFO
+    // ========================================
+
+    /**
+     * Set server/runtime information.
+     *
+     * @param Server|null $server Server info object, or null for auto-detection
+     *
+     * @example
+     * ```php
+     * // Auto-detect PHP/Symfony info
+     * $stacktracer->setServer(Server::autoDetect('7.0.3'));
+     * ```
+     */
+    public function setServer(?Server $server = null): void
+    {
+        $this->server = $server ?? Server::autoDetect($this->serviceVersion);
+
+        if ($this->currentTrace !== null) {
+            $this->currentTrace->setServer($this->server);
+        }
+    }
+
+    /**
+     * Get the server info.
+     */
+    public function getServer(): ?Server
+    {
+        return $this->server;
     }
 
     public function setTag(string $key, string $value): void

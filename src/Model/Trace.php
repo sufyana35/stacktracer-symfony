@@ -70,6 +70,17 @@ class Trace implements \JsonSerializable
 
     private ?string $groupKey;
 
+    // User context
+    private ?User $user;
+
+    // Server info
+    private ?Server $server;
+
+    // Release tracking
+    private ?string $release;
+
+    private ?string $environment;
+
     public function __construct(
         string $type = self::TYPE_CUSTOM,
         string $level = self::LEVEL_INFO,
@@ -96,6 +107,10 @@ class Trace implements \JsonSerializable
         $this->parentSpanId = null;
         $this->fingerprint = null;
         $this->groupKey = null;
+        $this->user = null;
+        $this->server = null;
+        $this->release = null;
+        $this->environment = null;
     }
 
     private function generateId(): string
@@ -305,6 +320,84 @@ class Trace implements \JsonSerializable
     public function setFeatureFlags(array $flags): self
     {
         $this->featureFlags = $flags;
+
+        return $this;
+    }
+
+    // --- User Context ---
+
+    /**
+     * Get user context.
+     */
+    public function getUser(): ?User
+    {
+        return $this->user;
+    }
+
+    /**
+     * Set user context.
+     */
+    public function setUser(?User $user): self
+    {
+        $this->user = $user;
+
+        return $this;
+    }
+
+    // --- Server Info ---
+
+    /**
+     * Get server information.
+     */
+    public function getServer(): ?Server
+    {
+        return $this->server;
+    }
+
+    /**
+     * Set server information.
+     */
+    public function setServer(?Server $server): self
+    {
+        $this->server = $server;
+
+        return $this;
+    }
+
+    // --- Release Tracking ---
+
+    /**
+     * Get release/version.
+     */
+    public function getRelease(): ?string
+    {
+        return $this->release;
+    }
+
+    /**
+     * Set release/version.
+     */
+    public function setRelease(?string $release): self
+    {
+        $this->release = $release;
+
+        return $this;
+    }
+
+    /**
+     * Get environment.
+     */
+    public function getEnvironment(): ?string
+    {
+        return $this->environment;
+    }
+
+    /**
+     * Set environment.
+     */
+    public function setEnvironment(?string $environment): self
+    {
+        $this->environment = $environment;
 
         return $this;
     }
@@ -537,6 +630,30 @@ class Trace implements \JsonSerializable
         // Only include feature flags if present
         if (!empty($this->featureFlags)) {
             $data['flags'] = array_map(fn ($f) => $f->jsonSerialize(), $this->featureFlags);
+        }
+
+        // User context
+        if ($this->user !== null) {
+            $userData = $this->user->jsonSerialize();
+            if (!empty($userData)) {
+                $data['user'] = $userData;
+            }
+        }
+
+        // Server info
+        if ($this->server !== null) {
+            $serverData = $this->server->jsonSerialize();
+            if (!empty($serverData)) {
+                $data['server'] = $serverData;
+            }
+        }
+
+        // Release tracking
+        if ($this->release !== null) {
+            $data['release'] = $this->release;
+        }
+        if ($this->environment !== null) {
+            $data['env'] = $this->environment;
         }
 
         return $data;
