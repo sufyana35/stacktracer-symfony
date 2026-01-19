@@ -73,8 +73,53 @@ final class StacktracerExtension extends Extension
         $container->setParameter('stacktracer.logging.capture_context', $config['logging']['capture_context']);
         $container->setParameter('stacktracer.logging.exclude_channels', $config['logging']['exclude_channels']);
 
+        // Integration settings
+        $container->setParameter('stacktracer.integrations.doctrine.enabled', $config['integrations']['doctrine']['enabled']);
+        $container->setParameter('stacktracer.integrations.doctrine.slow_query_threshold', $config['integrations']['doctrine']['slow_query_threshold']);
+        $container->setParameter('stacktracer.integrations.http_client.enabled', $config['integrations']['http_client']['enabled']);
+        $container->setParameter('stacktracer.integrations.http_client.propagate_context', $config['integrations']['http_client']['propagate_context']);
+        $container->setParameter('stacktracer.integrations.messenger.enabled', $config['integrations']['messenger']['enabled']);
+        $container->setParameter('stacktracer.integrations.cache.enabled', $config['integrations']['cache']['enabled']);
+        $container->setParameter('stacktracer.integrations.console.enabled', $config['integrations']['console']['enabled']);
+
         $loader = new YamlFileLoader($container, new FileLocator(__DIR__ . '/../../config'));
         $loader->load('services.yaml');
+
+        // Conditionally remove integration services based on configuration
+        $this->configureIntegrations($container, $config);
+    }
+
+    /**
+     * Configures integration services based on availability and configuration.
+     *
+     * @param ContainerBuilder $container Service container
+     * @param array<string, mixed> $config Processed configuration
+     */
+    private function configureIntegrations(ContainerBuilder $container, array $config): void
+    {
+        // Remove Messenger subscriber if disabled or Messenger not available
+        if (!$config['integrations']['messenger']['enabled'] || !class_exists('Symfony\Component\Messenger\MessageBusInterface')) {
+            $container->removeDefinition('Stacktracer\SymfonyBundle\EventSubscriber\MessengerTracingSubscriber');
+        }
+
+        // Remove Console subscriber if disabled
+        if (!$config['integrations']['console']['enabled']) {
+            $container->removeDefinition('Stacktracer\SymfonyBundle\EventSubscriber\ConsoleTracingSubscriber');
+        }
+
+        // Remove HTTP Client decorator if disabled or HttpClient not available
+        if (!$config['integrations']['http_client']['enabled'] || !interface_exists('Symfony\Contracts\HttpClient\HttpClientInterface')) {
+            if ($container->hasDefinition('Stacktracer\SymfonyBundle\EventSubscriber\TracingHttpClient')) {
+                $container->removeDefinition('Stacktracer\SymfonyBundle\EventSubscriber\TracingHttpClient');
+            }
+        }
+
+        // Remove Doctrine middleware if disabled or Doctrine not available
+        if (!$config['integrations']['doctrine']['enabled'] || !interface_exists('Doctrine\DBAL\Driver\Middleware')) {
+            if ($container->hasDefinition('Stacktracer\SymfonyBundle\EventSubscriber\DoctrineTracingMiddleware')) {
+                $container->removeDefinition('Stacktracer\SymfonyBundle\EventSubscriber\DoctrineTracingMiddleware');
+            }
+        }
     }
 
     public function getAlias(): string

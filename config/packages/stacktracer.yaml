@@ -66,5 +66,27 @@ stacktracer:
         exclude_channels:            # Channels to ignore
             - event
             - doctrine
-            - authorization
-            - cookie
+
+    # SDK Integrations (requires capture.spans: true for span tracing)
+    integrations:
+        # Doctrine DBAL - SQL query tracing
+        doctrine:
+            enabled: true                # Enable Doctrine query tracing
+            slow_query_threshold: 100    # ms - queries above this are flagged
+
+        # Symfony HttpClient - outgoing HTTP request tracing
+        http_client:
+            enabled: true                # Enable HTTP client tracing
+            propagate_context: true      # Inject W3C traceparent headers
+
+        # Symfony Messenger - async job/message tracing
+        messenger:
+            enabled: true                # Enable Messenger tracing
+
+        # Symfony Cache - cache operation tracing
+        cache:
+            enabled: true                # Enable cache tracing
+
+        # Console Commands - CLI command tracing
+        console:
+            enabled: true                # Enable console command tracing

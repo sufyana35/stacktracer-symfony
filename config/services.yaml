@@ -70,3 +70,32 @@ services:
             $tracing: '@Stacktracer\SymfonyBundle\Service\TracingService'
         tags:
             - { name: kernel.event_subscriber }
+
+    # Console command tracing subscriber
+    Stacktracer\SymfonyBundle\EventSubscriber\ConsoleTracingSubscriber:
+        arguments:
+            $tracing: '@Stacktracer\SymfonyBundle\Service\TracingService'
+        tags:
+            - { name: kernel.event_subscriber }
+
+    # Messenger tracing subscriber (auto-registered if Symfony Messenger is available)
+    Stacktracer\SymfonyBundle\EventSubscriber\MessengerTracingSubscriber:
+        arguments:
+            $tracing: '@Stacktracer\SymfonyBundle\Service\TracingService'
+        tags:
+            - { name: kernel.event_subscriber }
+
+    # Doctrine DBAL middleware (registered via extension if Doctrine is available)
+    Stacktracer\SymfonyBundle\EventSubscriber\DoctrineTracingMiddleware:
+        arguments:
+            $tracing: '@Stacktracer\SymfonyBundle\Service\TracingService'
+            $slowQueryThreshold: '%stacktracer.integrations.doctrine.slow_query_threshold%'
+
+    # HTTP Client decorator (registered via extension if HttpClient is available)
+    Stacktracer\SymfonyBundle\EventSubscriber\TracingHttpClient:
+        decorates: 'http_client'
+        decoration_priority: 10
+        arguments:
+            $client: '@.inner'
+            $tracing: '@Stacktracer\SymfonyBundle\Service\TracingService'
+            $propagateContext: '%stacktracer.integrations.http_client.propagate_context%'
