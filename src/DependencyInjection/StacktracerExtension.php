@@ -81,6 +81,11 @@ final class StacktracerExtension extends Extension
         $container->setParameter('stacktracer.integrations.messenger.enabled', $config['integrations']['messenger']['enabled']);
         $container->setParameter('stacktracer.integrations.cache.enabled', $config['integrations']['cache']['enabled']);
         $container->setParameter('stacktracer.integrations.console.enabled', $config['integrations']['console']['enabled']);
+        $container->setParameter('stacktracer.integrations.form.enabled', $config['integrations']['form']['enabled']);
+        $container->setParameter('stacktracer.integrations.security.enabled', $config['integrations']['security']['enabled']);
+        $container->setParameter('stacktracer.integrations.mailer.enabled', $config['integrations']['mailer']['enabled']);
+        $container->setParameter('stacktracer.integrations.twig.enabled', $config['integrations']['twig']['enabled']);
+        $container->setParameter('stacktracer.integrations.twig.slow_threshold', $config['integrations']['twig']['slow_threshold']);
 
         $loader = new YamlFileLoader($container, new FileLocator(__DIR__ . '/../../config'));
         $loader->load('services.yaml');
@@ -97,28 +102,54 @@ final class StacktracerExtension extends Extension
      */
     private function configureIntegrations(ContainerBuilder $container, array $config): void
     {
+        $integrationNs = 'Stacktracer\\SymfonyBundle\\Integration\\Symfony\\';
+
         // Remove Messenger subscriber if disabled or Messenger not available
-        if (!$config['integrations']['messenger']['enabled'] || !class_exists('Symfony\Component\Messenger\MessageBusInterface')) {
-            $container->removeDefinition('Stacktracer\SymfonyBundle\EventSubscriber\MessengerTracingSubscriber');
+        if (!$config['integrations']['messenger']['enabled'] || !class_exists('Symfony\\Component\\Messenger\\MessageBusInterface')) {
+            $this->removeDefinitionIfExists($container, $integrationNs . 'MessengerTracingSubscriber');
         }
 
         // Remove Console subscriber if disabled
         if (!$config['integrations']['console']['enabled']) {
-            $container->removeDefinition('Stacktracer\SymfonyBundle\EventSubscriber\ConsoleTracingSubscriber');
+            $this->removeDefinitionIfExists($container, $integrationNs . 'ConsoleTracingSubscriber');
         }
 
         // Remove HTTP Client decorator if disabled or HttpClient not available
-        if (!$config['integrations']['http_client']['enabled'] || !interface_exists('Symfony\Contracts\HttpClient\HttpClientInterface')) {
-            if ($container->hasDefinition('Stacktracer\SymfonyBundle\EventSubscriber\TracingHttpClient')) {
-                $container->removeDefinition('Stacktracer\SymfonyBundle\EventSubscriber\TracingHttpClient');
-            }
+        if (!$config['integrations']['http_client']['enabled'] || !interface_exists('Symfony\\Contracts\\HttpClient\\HttpClientInterface')) {
+            $this->removeDefinitionIfExists($container, $integrationNs . 'TracingHttpClient');
         }
 
         // Remove Doctrine middleware if disabled or Doctrine not available
-        if (!$config['integrations']['doctrine']['enabled'] || !interface_exists('Doctrine\DBAL\Driver\Middleware')) {
-            if ($container->hasDefinition('Stacktracer\SymfonyBundle\EventSubscriber\DoctrineTracingMiddleware')) {
-                $container->removeDefinition('Stacktracer\SymfonyBundle\EventSubscriber\DoctrineTracingMiddleware');
-            }
+        if (!$config['integrations']['doctrine']['enabled'] || !interface_exists('Doctrine\\DBAL\\Driver\\Middleware')) {
+            $this->removeDefinitionIfExists($container, $integrationNs . 'DoctrineTracingMiddleware');
+        }
+
+        // Remove Form subscriber if disabled or Form component not available
+        if (!$config['integrations']['form']['enabled'] || !class_exists('Symfony\\Component\\Form\\FormEvents')) {
+            $this->removeDefinitionIfExists($container, $integrationNs . 'FormTracingSubscriber');
+        }
+
+        // Remove Security subscriber if disabled or Security component not available
+        if (!$config['integrations']['security']['enabled'] || !class_exists('Symfony\\Component\\Security\\Http\\Event\\LoginFailureEvent')) {
+            $this->removeDefinitionIfExists($container, $integrationNs . 'SecurityTracingSubscriber');
+        }
+
+        // Remove Mailer subscriber if disabled or Mailer component not available
+        if (!$config['integrations']['mailer']['enabled'] || !class_exists('Symfony\\Component\\Mailer\\Event\\MessageEvent')) {
+            $this->removeDefinitionIfExists($container, $integrationNs . 'MailerTracingSubscriber');
+        }
+
+        // Remove Twig subscribers if disabled or Twig not available
+        if (!$config['integrations']['twig']['enabled'] || !class_exists('Twig\\Environment')) {
+            $this->removeDefinitionIfExists($container, $integrationNs . 'TwigTracingSubscriber');
+            $this->removeDefinitionIfExists($container, $integrationNs . 'TwigTracingExtension');
+        }
+    }
+
+    private function removeDefinitionIfExists(ContainerBuilder $container, string $id): void
+    {
+        if ($container->hasDefinition($id)) {
+            $container->removeDefinition($id);
         }
     }
 

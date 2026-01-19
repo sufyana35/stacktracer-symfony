@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Stacktracer\SymfonyBundle\EventSubscriber;
+namespace Stacktracer\SymfonyBundle\Integration\Symfony;
 
 use Doctrine\DBAL\Driver\Middleware as DriverMiddleware;
 use Doctrine\DBAL\Logging\Middleware;

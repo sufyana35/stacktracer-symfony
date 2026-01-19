@@ -71,31 +71,72 @@ services:
         tags:
             - { name: kernel.event_subscriber }
 
-    # Console command tracing subscriber
-    Stacktracer\SymfonyBundle\EventSubscriber\ConsoleTracingSubscriber:
+    # ============================================
+    # Symfony Integrations (src/Integration/Symfony/)
+    # ============================================
+
+    # Console command tracing
+    Stacktracer\SymfonyBundle\Integration\Symfony\ConsoleTracingSubscriber:
         arguments:
             $tracing: '@Stacktracer\SymfonyBundle\Service\TracingService'
         tags:
             - { name: kernel.event_subscriber }
 
-    # Messenger tracing subscriber (auto-registered if Symfony Messenger is available)
-    Stacktracer\SymfonyBundle\EventSubscriber\MessengerTracingSubscriber:
+    # Messenger tracing (async jobs/messages)
+    Stacktracer\SymfonyBundle\Integration\Symfony\MessengerTracingSubscriber:
         arguments:
             $tracing: '@Stacktracer\SymfonyBundle\Service\TracingService'
         tags:
             - { name: kernel.event_subscriber }
 
-    # Doctrine DBAL middleware (registered via extension if Doctrine is available)
-    Stacktracer\SymfonyBundle\EventSubscriber\DoctrineTracingMiddleware:
+    # Doctrine DBAL middleware (SQL queries)
+    Stacktracer\SymfonyBundle\Integration\Symfony\DoctrineTracingMiddleware:
         arguments:
             $tracing: '@Stacktracer\SymfonyBundle\Service\TracingService'
             $slowQueryThreshold: '%stacktracer.integrations.doctrine.slow_query_threshold%'
 
-    # HTTP Client decorator (registered via extension if HttpClient is available)
-    Stacktracer\SymfonyBundle\EventSubscriber\TracingHttpClient:
+    # HTTP Client decorator (outgoing requests)
+    Stacktracer\SymfonyBundle\Integration\Symfony\TracingHttpClient:
         decorates: 'http_client'
         decoration_priority: 10
         arguments:
             $client: '@.inner'
             $tracing: '@Stacktracer\SymfonyBundle\Service\TracingService'
             $propagateContext: '%stacktracer.integrations.http_client.propagate_context%'
+
+    # Form validation tracking
+    Stacktracer\SymfonyBundle\Integration\Symfony\FormTracingSubscriber:
+        arguments:
+            $tracing: '@Stacktracer\SymfonyBundle\Service\TracingService'
+        tags:
+            - { name: kernel.event_subscriber }
+
+    # Security event tracking (login, logout, access denied)
+    Stacktracer\SymfonyBundle\Integration\Symfony\SecurityTracingSubscriber:
+        arguments:
+            $tracing: '@Stacktracer\SymfonyBundle\Service\TracingService'
+        tags:
+            - { name: kernel.event_subscriber }
+
+    # Mailer tracking (email sending)
+    Stacktracer\SymfonyBundle\Integration\Symfony\MailerTracingSubscriber:
+        arguments:
+            $tracing: '@Stacktracer\SymfonyBundle\Service\TracingService'
+        tags:
+            - { name: kernel.event_subscriber }
+
+    # Twig error tracking
+    Stacktracer\SymfonyBundle\Integration\Symfony\TwigTracingSubscriber:
+        arguments:
+            $tracing: '@Stacktracer\SymfonyBundle\Service\TracingService'
+        tags:
+            - { name: kernel.event_subscriber }
+
+    # Twig template profiler extension
+    Stacktracer\SymfonyBundle\Integration\Symfony\TwigTracingExtension:
+        arguments:
+            $tracing: '@Stacktracer\SymfonyBundle\Service\TracingService'
+            $slowThreshold: '%stacktracer.integrations.twig.slow_threshold%'
+        tags:
+            - { name: twig.extension }
+

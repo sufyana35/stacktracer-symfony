@@ -10,6 +10,7 @@ Lightweight error tracking and tracing SDK for Symfony applications with **OpenT
 - 🔐 **Fingerprinting** - Hash-based deduplication for cost optimization
 - 📊 **Monolog Integration** - Automatic log capture linked to spans
 - ⚡ **Performance** - Batching, compression, and sampling
+- 🧩 **Symfony Integrations** - Doctrine, Messenger, Mailer, Security, Forms, Twig, Cache, Console
 
 ## Feature Tiers
 
@@ -256,6 +257,86 @@ $client->request('GET', '/api/users', [
 ```
 
 Incoming requests with `traceparent` headers are automatically linked to the parent trace.
+
+## Symfony Integrations
+
+All integrations are **enabled by default** and auto-detect component availability. Configure in `stacktracer.yaml`:
+
+```yaml
+stacktracer:
+    integrations:
+        doctrine:
+            enabled: true
+            slow_query_threshold: 100  # ms
+        http_client:
+            enabled: true
+            propagate_context: true    # W3C traceparent
+        messenger:
+            enabled: true
+        cache:
+            enabled: true
+        console:
+            enabled: true
+        form:
+            enabled: true
+        security:
+            enabled: true
+        mailer:
+            enabled: true
+        twig:
+            enabled: true
+            slow_threshold: 50         # ms
+```
+
+### Available Integrations
+
+| Integration | Component | What's Tracked |
+|-------------|-----------|----------------|
+| **Doctrine DBAL** | `doctrine/dbal` | SQL queries, slow query detection (`db.*`) |
+| **HTTP Client** | `symfony/http-client` | Outgoing requests, trace propagation (`http.*`) |
+| **Messenger** | `symfony/messenger` | Async jobs, retries, failures (`messaging.*`, `job.*`) |
+| **Cache** | `symfony/cache` | Cache hits/misses, operations (`cache.*`) |
+| **Console** | `symfony/console` | CLI commands, exit codes, memory (`cli.*`) |
+| **Form** | `symfony/form` | Validation errors, failed submissions (`form.*`) |
+| **Security** | `symfony/security` | Login, logout, access denied (`security.*`) |
+| **Mailer** | `symfony/mailer` | Email sending, delivery failures (`mail.*`) |
+| **Twig** | `twig/twig` | Template renders, errors (`template.*`) |
+
+### Example: Form Validation Errors
+
+Form validation errors are automatically captured as breadcrumbs:
+
+```php
+// When a form fails validation, you'll see breadcrumbs like:
+// [warning] Form validation failed
+//   - form.name: "contact"
+//   - form.error_count: 2
+//   - form.errors: [{"field": "email", "message": "Invalid email"}]
+```
+
+### Example: Security Events
+
+Authentication events are tracked automatically:
+
+```php
+// Login failures appear as breadcrumbs + spans:
+// [warning] Login attempt failed
+//   - security.event: "login_failure"
+//   - security.attempted_user: "john@example.com"
+//   - security.failure_reason: "Invalid credentials"
+```
+
+### Example: Mailer Tracking
+
+Email sending is tracked with delivery status:
+
+```php
+// Email events appear as breadcrumbs + spans:
+// [info] Email sent successfully
+//   - mail.to: "user@example.com"
+//   - mail.subject: "Welcome to our platform"
+//   - mail.duration_ms: 234.5
+```
 
 ## Data Model
 

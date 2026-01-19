@@ -90,3 +90,20 @@ stacktracer:
         # Console Commands - CLI command tracing
         console:
             enabled: true                # Enable console command tracing
+
+        # Symfony Form - validation error tracking
+        form:
+            enabled: true                # Track form validation errors
+
+        # Symfony Security - authentication/authorization tracking
+        security:
+            enabled: true                # Track login, logout, access denied
+
+        # Symfony Mailer - email sending tracking
+        mailer:
+            enabled: true                # Track email sending/failures
+
+        # Twig - template rendering tracking
+        twig:
+            enabled: true                # Track template renders
+            slow_threshold: 50           # ms - templates above this are flagged
