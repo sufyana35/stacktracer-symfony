@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Stacktracer\SymfonyBundle\Handler;
+namespace Stacktracer\SymfonyBundle\Monolog;
 
 use Monolog\Handler\AbstractProcessingHandler;
 use Monolog\Level;
@@ -19,7 +19,7 @@ use Stacktracer\SymfonyBundle\Service\TracingService;
  *
  * @author Stacktracer <hello@stacktracer.io>
  */
-final class MonologHandler extends AbstractProcessingHandler
+final class Handler extends AbstractProcessingHandler
 {
     private TracingService $tracingService;
 

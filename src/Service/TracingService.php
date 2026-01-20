@@ -96,6 +96,30 @@ class TracingService
 
     private ?string $environment = null;
 
+    /** @var array|null Cached installed packages */
+    private ?array $cachedPackages = null;
+
+    /** @var bool Whether to collect package info */
+    private bool $collectPackages = true;
+
+    /** @var array<string, string> Compiled regex patterns for ignored exceptions */
+    private array $compiledExceptionPatterns = [];
+
+    /** @var array<string, string> Compiled regex patterns for ignored transactions */
+    private array $compiledTransactionPatterns = [];
+
+    /** @var array<string, string> Path shortening cache */
+    private array $pathCache = [];
+
+    /** @var int Maximum path cache size */
+    private const PATH_CACHE_MAX_SIZE = 200;
+
+    /** @var array<string, array> File content cache for code context */
+    private array $fileCache = [];
+
+    /** @var int Maximum file cache entries */
+    private const FILE_CACHE_MAX_SIZE = 20;
+
     public function __construct(
         TransportInterface $transport,
         bool $enabled = true,
@@ -110,6 +134,7 @@ class TracingService
         array $sensitiveKeys = ['password', 'token', 'secret', 'api_key', 'authorization', 'cookie'],
         string $serviceName = 'unknown',
         string $serviceVersion = '0.0.0',
+        ?string $environment = null,
         array $ignoredExceptions = [],
         array $ignoredTransactions = []
     ) {
@@ -129,6 +154,15 @@ class TracingService
         $this->ignoredExceptions = $ignoredExceptions;
         $this->ignoredTransactions = $ignoredTransactions;
         $this->spanManager = new SpanManager($serviceName, $serviceVersion);
+        
+        // Auto-detect environment from Symfony kernel if not explicitly set
+        if ($environment !== null) {
+            $this->environment = $environment;
+        } elseif (isset($_SERVER['APP_ENV'])) {
+            $this->environment = $_SERVER['APP_ENV'];
+        } elseif (getenv('APP_ENV')) {
+            $this->environment = getenv('APP_ENV');
+        }
     }
 
     public function isEnabled(): bool
@@ -396,6 +430,9 @@ class TracingService
         $this->currentTrace->computeFingerprint();
         $this->currentTrace->computeGroupKey();
 
+        // Attach installed packages
+        $this->attachPackagesToTrace($this->currentTrace);
+
         $this->transport->send($this->currentTrace);
         $this->transport->flush();
 
@@ -548,6 +585,7 @@ class TracingService
 
         // Only send standalone exception trace if no request trace is active
         if ($this->enabled) {
+            $this->attachPackagesToTrace($trace);
             $this->transport->send($trace);
         }
 
@@ -623,6 +661,7 @@ class TracingService
         }
 
         if ($this->enabled) {
+            $this->attachPackagesToTrace($trace);
             $this->transport->send($trace);
         }
 
@@ -896,26 +935,29 @@ class TracingService
 
     /**
      * Check if an exception class should be ignored.
+     * Uses compiled patterns for better performance on repeated calls.
      */
     public function shouldIgnoreException(\Throwable $exception): bool
     {
         $class = get_class($exception);
 
         foreach ($this->ignoredExceptions as $pattern) {
-            // Exact match
+            // Exact match (fast path)
             if ($pattern === $class) {
                 return true;
             }
 
-            // Wildcard match (e.g., "Symfony\Component\HttpKernel\Exception\*")
+            // Wildcard match - use compiled pattern cache
             if (str_contains($pattern, '*')) {
-                $regex = '/^' . str_replace('\\*', '.*', preg_quote($pattern, '/')) . '$/';
-                if (preg_match($regex, $class)) {
+                if (!isset($this->compiledExceptionPatterns[$pattern])) {
+                    $this->compiledExceptionPatterns[$pattern] = '/^' . str_replace('\\*', '.*', preg_quote($pattern, '/')) . '$/';
+                }
+                if (preg_match($this->compiledExceptionPatterns[$pattern], $class)) {
                     return true;
                 }
             }
 
-            // Parent class check
+            // Parent class check (use is_a for interface/parent matching)
             if (is_a($exception, $pattern)) {
                 return true;
             }
@@ -926,18 +968,22 @@ class TracingService
 
     /**
      * Check if a transaction should be ignored.
+     * Uses compiled patterns for better performance on repeated calls.
      */
     public function shouldIgnoreTransaction(string $name): bool
     {
         foreach ($this->ignoredTransactions as $pattern) {
+            // Exact match (fast path)
             if ($pattern === $name) {
                 return true;
             }
 
-            // Wildcard match
+            // Wildcard match - use compiled pattern cache
             if (str_contains($pattern, '*')) {
-                $regex = '/^' . str_replace('\\*', '.*', preg_quote($pattern, '/')) . '$/';
-                if (preg_match($regex, $name)) {
+                if (!isset($this->compiledTransactionPatterns[$pattern])) {
+                    $this->compiledTransactionPatterns[$pattern] = '/^' . str_replace('\\*', '.*', preg_quote($pattern, '/')) . '$/';
+                }
+                if (preg_match($this->compiledTransactionPatterns[$pattern], $name)) {
                     return true;
                 }
             }
@@ -1069,12 +1115,12 @@ class TracingService
      * @example
      * ```php
      * // Auto-detect PHP/Symfony info
-     * $stacktracer->setServer(Server::autoDetect('7.0.3'));
+     * $stacktracer->setServer(Server::autoDetect());
      * ```
      */
     public function setServer(?Server $server = null): void
     {
-        $this->server = $server ?? Server::autoDetect($this->serviceVersion);
+        $this->server = $server ?? Server::autoDetect();
 
         if ($this->currentTrace !== null) {
             $this->currentTrace->setServer($this->server);
@@ -1090,7 +1136,7 @@ class TracingService
     public function getServer(): Server
     {
         if ($this->server === null) {
-            $this->server = Server::autoDetect($this->serviceVersion);
+            $this->server = Server::autoDetect();
         }
 
         return $this->server;
@@ -1191,29 +1237,56 @@ class TracingService
 
     private function shortenPath(string $file): string
     {
+        // Check path cache first
+        if (isset($this->pathCache[$file])) {
+            return $this->pathCache[$file];
+        }
+
         if ($this->projectDir === null) {
             if (preg_match('#^(.+?)/vendor/#', $file, $matches)) {
                 $this->projectDir = $matches[1];
             }
         }
 
+        $shortened = $file;
         if ($this->projectDir !== null && str_starts_with($file, $this->projectDir)) {
-            return substr($file, strlen($this->projectDir) + 1);
+            $shortened = substr($file, strlen($this->projectDir) + 1);
         }
 
-        return $file;
+        // Cache with LRU eviction
+        if (count($this->pathCache) >= self::PATH_CACHE_MAX_SIZE) {
+            array_shift($this->pathCache);
+        }
+        $this->pathCache[$file] = $shortened;
+
+        return $shortened;
     }
 
+    /**
+     * Extract code context around a specific line.
+     * Uses file caching to avoid re-reading the same file for multiple frames.
+     */
     public function extractCodeContext(string $file, int $line, ?int $contextLines = null): array
     {
         if (!is_readable($file)) {
             return [];
         }
 
-        $lines = @file($file);
-        if ($lines === false) {
-            return [];
+        // Use file cache for repeated reads (same file, different lines)
+        if (!isset($this->fileCache[$file])) {
+            $lines = @file($file);
+            if ($lines === false) {
+                return [];
+            }
+            
+            // Cache with LRU eviction
+            if (count($this->fileCache) >= self::FILE_CACHE_MAX_SIZE) {
+                array_shift($this->fileCache);
+            }
+            $this->fileCache[$file] = $lines;
         }
+        
+        $lines = $this->fileCache[$file];
 
         $numLines = $contextLines ?? $this->exceptionContextLines;
         $start = max(0, $line - $numLines - 1);
@@ -1246,5 +1319,72 @@ class TracingService
     public function getStacktraceContextLines(): int
     {
         return $this->stacktraceContextLines;
+    }
+
+    /**
+     * Get installed packages from Composer.
+     * Cached after first call since packages don't change during runtime.
+     *
+     * @return array<string, string> Package name => version
+     */
+    public function getInstalledPackages(): array
+    {
+        if ($this->cachedPackages !== null) {
+            return $this->cachedPackages;
+        }
+
+        $packages = [];
+
+        // Use Composer's InstalledVersions if available
+        if (class_exists(\Composer\InstalledVersions::class)) {
+            try {
+                $installed = \Composer\InstalledVersions::getAllRawData();
+                foreach ($installed as $dataset) {
+                    if (!isset($dataset['versions'])) {
+                        continue;
+                    }
+                    foreach ($dataset['versions'] as $name => $info) {
+                        // Skip dev dependencies and metapackages
+                        if (isset($info['type']) && in_array($info['type'], ['metapackage', 'project'], true)) {
+                            continue;
+                        }
+                        // Get pretty version or fallback to version
+                        $version = $info['pretty_version'] ?? $info['version'] ?? 'unknown';
+                        $packages[$name] = $version;
+                    }
+                }
+            } catch (\Throwable $e) {
+                // Silently fail if we can't read packages
+            }
+        }
+
+        // Sort for consistent fingerprinting
+        ksort($packages);
+        $this->cachedPackages = $packages;
+
+        return $packages;
+    }
+
+    /**
+     * Enable or disable package collection.
+     */
+    public function setCollectPackages(bool $collect): void
+    {
+        $this->collectPackages = $collect;
+    }
+
+    /**
+     * Attach installed packages to a trace.
+     */
+    private function attachPackagesToTrace(Trace $trace): void
+    {
+        if (!$this->collectPackages) {
+            return;
+        }
+
+        $packages = $this->getInstalledPackages();
+        if (!empty($packages)) {
+            $trace->setPackages($packages);
+        }
     }
 }

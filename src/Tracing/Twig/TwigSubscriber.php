@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Stacktracer\SymfonyBundle\Integration\Symfony;
+namespace Stacktracer\SymfonyBundle\Tracing\Twig;
 
 use Stacktracer\SymfonyBundle\Service\TracingService;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
@@ -17,7 +17,7 @@ use Twig\Error\Error as TwigError;
  *
  * @author Stacktracer <hello@stacktracer.io>
  */
-final class TwigTracingSubscriber implements EventSubscriberInterface
+final class TwigSubscriber implements EventSubscriberInterface
 {
     private TracingService $tracing;
 

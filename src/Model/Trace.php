@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Stacktracer\SymfonyBundle\Model;
 
+use Stacktracer\SymfonyBundle\StacktracerBundle;
 use Stacktracer\SymfonyBundle\Util\Fingerprint;
 
 /**
@@ -81,6 +82,16 @@ class Trace implements \JsonSerializable
 
     private ?string $environment;
 
+    // Installed packages with fingerprint
+    private ?array $packages = null;
+
+    private ?string $packagesFingerprint = null;
+
+    // SDK info
+    private string $sdkName;
+
+    private string $sdkVersion;
+
     public function __construct(
         string $type = self::TYPE_CUSTOM,
         string $level = self::LEVEL_INFO,
@@ -111,6 +122,10 @@ class Trace implements \JsonSerializable
         $this->server = null;
         $this->release = null;
         $this->environment = null;
+        $this->packages = null;
+        $this->packagesFingerprint = null;
+        $this->sdkName = StacktracerBundle::SDK_NAME;
+        $this->sdkVersion = StacktracerBundle::SDK_VERSION;
     }
 
     private function generateId(): string
@@ -545,6 +560,41 @@ class Trace implements \JsonSerializable
         return $this->performance;
     }
 
+    /**
+     * Set installed packages with automatic fingerprint generation.
+     *
+     * @param array $packages Array of ['name' => 'version', ...]
+     */
+    public function setPackages(array $packages): self
+    {
+        $this->packages = $packages;
+        // Generate fingerprint from sorted package list
+        ksort($packages);
+        $this->packagesFingerprint = substr(md5(json_encode($packages)), 0, 16);
+
+        return $this;
+    }
+
+    public function getPackages(): ?array
+    {
+        return $this->packages;
+    }
+
+    public function getPackagesFingerprint(): ?string
+    {
+        return $this->packagesFingerprint;
+    }
+
+    public function getSdkName(): string
+    {
+        return $this->sdkName;
+    }
+
+    public function getSdkVersion(): string
+    {
+        return $this->sdkVersion;
+    }
+
     public function setContext(array $context): self
     {
         $this->context = array_merge($this->context, $context);
@@ -655,6 +705,18 @@ class Trace implements \JsonSerializable
         if ($this->environment !== null) {
             $data['env'] = $this->environment;
         }
+
+        // Installed packages (only fingerprint by default, full list on demand)
+        if ($this->packages !== null && !empty($this->packages)) {
+            $data['packages'] = $this->packages;
+            $data['packages_fp'] = $this->packagesFingerprint;
+        }
+
+        // SDK info
+        $data['sdk'] = [
+            'name' => $this->sdkName,
+            'version' => $this->sdkVersion,
+        ];
 
         return $data;
     }

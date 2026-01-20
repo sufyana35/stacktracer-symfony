@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Stacktracer\SymfonyBundle\Integration\Symfony;
+namespace Stacktracer\SymfonyBundle\Tracing\Mailer;
 
 use Stacktracer\SymfonyBundle\Service\TracingService;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
@@ -20,7 +20,7 @@ use Symfony\Component\Mime\Email;
  *
  * @author Stacktracer <hello@stacktracer.io>
  */
-final class MailerTracingSubscriber implements EventSubscriberInterface
+final class MailerSubscriber implements EventSubscriberInterface
 {
     private TracingService $tracing;
 

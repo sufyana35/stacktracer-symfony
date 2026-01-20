@@ -93,6 +93,21 @@ final class ExceptionTracingSubscriber implements EventSubscriberInterface
             'user_agent' => $request->headers->get('User-Agent'),
         ]);
 
+        // Add exception-specific tags
+        $trace->addTag('exception.type', get_class($exception));
+        $trace->addTag('exception.handled', 'no');
+        $trace->addTag('exception.mechanism', 'symfony.exception_subscriber');
+        $trace->addTag('level', 'error');
+        
+        // HTTP status from exception if available
+        if (method_exists($exception, 'getStatusCode')) {
+            $trace->addTag('http.status_code', (string) $exception->getStatusCode());
+        }
+        
+        // Add error file info as tags
+        $trace->addTag('exception.file', basename($exception->getFile()));
+        $trace->addTag('exception.line', (string) $exception->getLine());
+
         // Record exception in current span ONLY if not already recorded
         // (SpanManager::withSpan already records exceptions when they bubble up)
         $currentSpan = $this->tracing->getCurrentSpan();

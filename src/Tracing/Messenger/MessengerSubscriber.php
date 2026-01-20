@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Stacktracer\SymfonyBundle\Integration\Symfony;
+namespace Stacktracer\SymfonyBundle\Tracing\Messenger;
 
 use Stacktracer\SymfonyBundle\Model\Span;
 use Stacktracer\SymfonyBundle\Service\TracingService;
@@ -26,7 +26,7 @@ use Symfony\Component\Messenger\Stamp\SentToFailureTransportStamp;
  *
  * @author Stacktracer <hello@stacktracer.io>
  */
-final class MessengerTracingSubscriber implements EventSubscriberInterface
+final class MessengerSubscriber implements EventSubscriberInterface
 {
     private TracingService $tracing;
 

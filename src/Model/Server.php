@@ -45,15 +45,18 @@ final class Server implements \JsonSerializable
      * Create with auto-detected PHP/Symfony values.
      *
      * Results are cached per process since server info never changes.
-     * If frameworkVersion differs from cached version, a new instance is created.
-     *
-     * @param string|null $frameworkVersion Symfony version
      */
-    public static function autoDetect(?string $frameworkVersion = null): self
+    public static function autoDetect(): self
     {
-        // Return cached instance if available and version matches
-        if (self::$cached !== null && self::$cached->frameworkVersion === $frameworkVersion) {
+        // Return cached instance if available
+        if (self::$cached !== null) {
             return self::$cached;
+        }
+
+        // Detect Symfony version
+        $frameworkVersion = null;
+        if (class_exists(\Symfony\Component\HttpKernel\Kernel::class)) {
+            $frameworkVersion = \Symfony\Component\HttpKernel\Kernel::VERSION;
         }
 
         self::$cached = new self(

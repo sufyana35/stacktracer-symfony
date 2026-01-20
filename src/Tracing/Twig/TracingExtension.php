@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Stacktracer\SymfonyBundle\Integration\Symfony;
+namespace Stacktracer\SymfonyBundle\Tracing\Twig;
 
 use Stacktracer\SymfonyBundle\Service\TracingService;
 use Twig\Extension\AbstractExtension;
@@ -18,7 +18,7 @@ use Twig\TwigFunction;
  *
  * @author Stacktracer <hello@stacktracer.io>
  */
-final class TwigTracingExtension extends AbstractExtension
+final class TracingExtension extends AbstractExtension
 {
     private TracingService $tracing;
 
@@ -88,6 +88,6 @@ final class TwigTracingExtension extends AbstractExtension
             return;
         }
 
-        $this->tracing->addBreadcrumb($message, $category, 'info', $data);
+        $this->tracing->addBreadcrumb($category, $message, $data, 'info');
     }
 }

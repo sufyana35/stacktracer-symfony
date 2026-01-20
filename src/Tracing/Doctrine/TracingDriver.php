@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Stacktracer\SymfonyBundle\Integration\Symfony;
+namespace Stacktracer\SymfonyBundle\Tracing\Doctrine;
 
 use Doctrine\DBAL\Driver as DriverInterface;
 use Doctrine\DBAL\Driver\Connection as DriverConnection;
@@ -16,7 +16,7 @@ use Stacktracer\SymfonyBundle\Service\TracingService;
  *
  * @internal
  */
-final class DoctrineTracingDriver extends AbstractDriverMiddleware
+final class TracingDriver extends AbstractDriverMiddleware
 {
     private TracingService $tracing;
 
@@ -33,7 +33,7 @@ final class DoctrineTracingDriver extends AbstractDriverMiddleware
     {
         $connection = parent::connect($params);
 
-        return new DoctrineTracingConnection(
+        return new TracingConnection(
             $connection,
             $this->tracing,
             $this->slowQueryThreshold,

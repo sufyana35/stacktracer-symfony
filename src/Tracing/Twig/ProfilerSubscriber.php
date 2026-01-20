@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Stacktracer\SymfonyBundle\Integration\Symfony;
+namespace Stacktracer\SymfonyBundle\Tracing\Twig;
 
 use Stacktracer\SymfonyBundle\Model\Span;
 use Stacktracer\SymfonyBundle\Service\TracingService;
@@ -24,7 +24,7 @@ use Twig\Profiler\Profile;
  *
  * @author Stacktracer <hello@stacktracer.io>
  */
-final class TwigProfilerSubscriber implements EventSubscriberInterface
+final class ProfilerSubscriber implements EventSubscriberInterface
 {
     private TracingService $tracing;
     private ?Environment $twig;
@@ -168,10 +168,10 @@ final class TwigProfilerSubscriber implements EventSubscriberInterface
             if ($durationMs >= $this->slowThreshold) {
                 $attributes['template.slow'] = true;
                 $this->tracing->addBreadcrumb(
-                    sprintf('Slow template render: %s (%.2fms)', $templateName, $durationMs),
                     'template',
-                    'warning',
-                    $attributes
+                    sprintf('Slow template render: %s (%.2fms)', $templateName, $durationMs),
+                    $attributes,
+                    'warning'
                 );
             }
             

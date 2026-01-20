@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Stacktracer\SymfonyBundle\Integration\Symfony;
+namespace Stacktracer\SymfonyBundle\Tracing\Form;
 
 use Stacktracer\SymfonyBundle\Service\TracingService;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
@@ -19,7 +19,7 @@ use Symfony\Component\Form\FormInterface;
  *
  * @author Stacktracer <hello@stacktracer.io>
  */
-final class FormTracingSubscriber implements EventSubscriberInterface
+final class FormSubscriber implements EventSubscriberInterface
 {
     private TracingService $tracing;
 

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Stacktracer\SymfonyBundle\Integration\Symfony;
+namespace Stacktracer\SymfonyBundle\Tracing\HttpClient;
 
 use Stacktracer\SymfonyBundle\Model\Span;
 use Stacktracer\SymfonyBundle\Service\TracingService;

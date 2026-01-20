@@ -17,6 +17,9 @@ use Symfony\Component\HttpKernel\Bundle\Bundle;
  */
 final class StacktracerBundle extends Bundle
 {
+    public const SDK_NAME = 'stacktracer-symfony';
+    public const SDK_VERSION = '1.0.0';
+
     /**
      * Returns the bundle root path.
      *

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Stacktracer\SymfonyBundle\Integration\Symfony;
+namespace Stacktracer\SymfonyBundle\Tracing\Security;
 
 use Stacktracer\SymfonyBundle\Service\TracingService;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
@@ -24,7 +24,7 @@ use Symfony\Component\Security\Http\Event\SwitchUserEvent;
  *
  * @author Stacktracer <hello@stacktracer.io>
  */
-final class SecurityTracingSubscriber implements EventSubscriberInterface
+final class SecuritySubscriber implements EventSubscriberInterface
 {
     private TracingService $tracing;
 

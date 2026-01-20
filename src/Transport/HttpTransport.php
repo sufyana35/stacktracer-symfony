@@ -7,6 +7,7 @@ namespace Stacktracer\SymfonyBundle\Transport;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 use Stacktracer\SymfonyBundle\Model\Trace;
+use Stacktracer\SymfonyBundle\StacktracerBundle;
 
 /**
  * HTTP transport for sending traces to a remote API.
@@ -121,8 +122,8 @@ final class HttpTransport implements TransportInterface
         $payload = [
             'traces' => $batch,
             'meta' => [
-                'sdk' => 'stacktracer-symfony',
-                'version' => '1.0.0',
+                'sdk' => StacktracerBundle::SDK_NAME,
+                'version' => StacktracerBundle::SDK_VERSION,
                 'sent_at' => (int) (microtime(true) * 1000),
                 'count' => count($batch),
             ],
@@ -133,7 +134,7 @@ final class HttpTransport implements TransportInterface
             'Content-Type: application/json',
             'X-API-Key: ' . $this->apiKey,
             'X-Trace-Count: ' . count($batch),
-            'User-Agent: Stacktracer-Symfony/1.0',
+            'User-Agent: Stacktracer-Symfony/' . StacktracerBundle::SDK_VERSION,
         ];
 
         if ($this->compress && strlen($body) > 1024) {

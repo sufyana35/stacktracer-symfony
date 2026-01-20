@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Stacktracer\SymfonyBundle\Integration\Symfony;
+namespace Stacktracer\SymfonyBundle\Tracing\Doctrine;
 
 use Doctrine\DBAL\Driver\Middleware as DriverMiddleware;
 use Doctrine\DBAL\Logging\Middleware;
@@ -16,7 +16,7 @@ use Stacktracer\SymfonyBundle\Service\TracingService;
  *
  * @author Stacktracer <hello@stacktracer.io>
  */
-final class DoctrineTracingMiddleware implements DriverMiddleware
+final class TracingMiddleware implements DriverMiddleware
 {
     private TracingService $tracing;
 
@@ -30,6 +30,6 @@ final class DoctrineTracingMiddleware implements DriverMiddleware
 
     public function wrap(\Doctrine\DBAL\Driver $driver): \Doctrine\DBAL\Driver
     {
-        return new DoctrineTracingDriver($driver, $this->tracing, $this->slowQueryThreshold);
+        return new TracingDriver($driver, $this->tracing, $this->slowQueryThreshold);
     }
 }

@@ -2,12 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Stacktracer\SymfonyBundle\Integration\Symfony;
+namespace Stacktracer\SymfonyBundle\Tracing\Doctrine;
 
 use Doctrine\DBAL\Driver\Middleware\AbstractStatementMiddleware;
 use Doctrine\DBAL\Driver\Result;
 use Doctrine\DBAL\Driver\Statement;
 use Doctrine\DBAL\ParameterType;
+use Stacktracer\SymfonyBundle\Model\Span;
 use Stacktracer\SymfonyBundle\Service\TracingService;
 
 /**
@@ -19,7 +20,7 @@ use Stacktracer\SymfonyBundle\Service\TracingService;
  *
  * @internal
  */
-final class DoctrineTracingStatement extends AbstractStatementMiddleware
+final class TracingStatement extends AbstractStatementMiddleware
 {
     private TracingService $tracing;
 
@@ -58,8 +59,9 @@ final class DoctrineTracingStatement extends AbstractStatementMiddleware
 
     public function execute(): Result
     {
-        $span = $this->tracing->startSpan($this->getSpanName(), 'db');
+        $span = $this->tracing->startSpan($this->getSpanName(), Span::KIND_CLIENT);
         $span->setAttributes($this->dbAttributes);
+        $span->setAttribute('db.type', 'sql');
         $span->setAttribute('db.statement', $this->sql);
 
         if (!empty($this->params)) {

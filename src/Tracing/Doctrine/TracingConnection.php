@@ -2,12 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Stacktracer\SymfonyBundle\Integration\Symfony;
+namespace Stacktracer\SymfonyBundle\Tracing\Doctrine;
 
 use Doctrine\DBAL\Driver\Connection as ConnectionInterface;
 use Doctrine\DBAL\Driver\Middleware\AbstractConnectionMiddleware;
 use Doctrine\DBAL\Driver\Result;
 use Doctrine\DBAL\Driver\Statement;
+use Stacktracer\SymfonyBundle\Model\Span;
 use Stacktracer\SymfonyBundle\Service\TracingService;
 
 /**
@@ -20,7 +21,7 @@ use Stacktracer\SymfonyBundle\Service\TracingService;
  *
  * @internal
  */
-final class DoctrineTracingConnection extends AbstractConnectionMiddleware
+final class TracingConnection extends AbstractConnectionMiddleware
 {
     private TracingService $tracing;
 
@@ -50,7 +51,7 @@ final class DoctrineTracingConnection extends AbstractConnectionMiddleware
     {
         $statement = parent::prepare($sql);
 
-        return new DoctrineTracingStatement(
+        return new TracingStatement(
             $statement,
             $this->tracing,
             $sql,
@@ -80,8 +81,9 @@ final class DoctrineTracingConnection extends AbstractConnectionMiddleware
     {
         ++$this->queryCount;
 
-        $span = $this->tracing->startSpan($this->getSpanName($sql), 'db');
+        $span = $this->tracing->startSpan($this->getSpanName($sql), Span::KIND_CLIENT);
         $span->setAttributes($this->buildDbAttributes());
+        $span->setAttribute('db.type', 'sql');
         $span->setAttribute('db.statement', $sql);
         $span->setAttribute('db.query_count', $this->queryCount);
 
