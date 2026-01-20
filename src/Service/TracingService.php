@@ -340,10 +340,8 @@ class TracingService
             $this->currentTrace->setEnvironment($this->environment);
         }
 
-        // Attach server info
-        if ($this->server !== null) {
-            $this->currentTrace->setServer($this->server);
-        }
+        // Attach server info (lazy-initialized and cached)
+        $this->currentTrace->setServer($this->getServer());
 
         // Sync trace ID with span manager
         $rootContext = $this->spanManager->getRootContext();
@@ -418,10 +416,8 @@ class TracingService
             $trace->setEnvironment($this->environment);
         }
 
-        // Attach server info
-        if ($this->server !== null) {
-            $trace->setServer($this->server);
-        }
+        // Attach server info (lazy-initialized and cached)
+        $trace->setServer($this->getServer());
 
         // Capture code context at exception location
         $codeContext = [];
@@ -570,10 +566,8 @@ class TracingService
             $trace->setEnvironment($this->environment);
         }
 
-        // Attach server info
-        if ($this->server !== null) {
-            $trace->setServer($this->server);
-        }
+        // Attach server info (lazy-initialized and cached)
+        $trace->setServer($this->getServer());
 
         // Sync trace ID with span manager
         if ($this->spanManager->getCurrentTraceId()) {
@@ -883,10 +877,17 @@ class TracingService
     }
 
     /**
-     * Get the server info.
+     * Get the server info (lazy-initialized on first access).
+     *
+     * Server info is auto-detected and cached since it never changes
+     * during the process lifetime.
      */
-    public function getServer(): ?Server
+    public function getServer(): Server
     {
+        if ($this->server === null) {
+            $this->server = Server::autoDetect($this->serviceVersion);
+        }
+
         return $this->server;
     }
 

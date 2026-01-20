@@ -15,6 +15,11 @@ namespace Stacktracer\SymfonyBundle\Model;
 final class Server implements \JsonSerializable
 {
     /**
+     * Cached auto-detected server instance (computed once per process).
+     */
+    private static ?self $cached = null;
+
+    /**
      * @param string|null $name Server hostname
      * @param string|null $os Operating system: linux, darwin, windows
      * @param string|null $osVersion OS version
@@ -39,11 +44,19 @@ final class Server implements \JsonSerializable
     /**
      * Create with auto-detected PHP/Symfony values.
      *
+     * Results are cached per process since server info never changes.
+     * If frameworkVersion differs from cached version, a new instance is created.
+     *
      * @param string|null $frameworkVersion Symfony version
      */
     public static function autoDetect(?string $frameworkVersion = null): self
     {
-        return new self(
+        // Return cached instance if available and version matches
+        if (self::$cached !== null && self::$cached->frameworkVersion === $frameworkVersion) {
+            return self::$cached;
+        }
+
+        self::$cached = new self(
             name: gethostname() ?: null,
             os: PHP_OS_FAMILY === 'Windows' ? 'windows' : (PHP_OS_FAMILY === 'Darwin' ? 'darwin' : 'linux'),
             osVersion: php_uname('r'),
@@ -53,6 +66,16 @@ final class Server implements \JsonSerializable
             framework: 'symfony',
             frameworkVersion: $frameworkVersion
         );
+
+        return self::$cached;
+    }
+
+    /**
+     * Clear the cached instance (useful for testing).
+     */
+    public static function clearCache(): void
+    {
+        self::$cached = null;
     }
 
     public function getName(): ?string

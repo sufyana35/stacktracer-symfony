@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace Stacktracer\SymfonyBundle\Integration\Symfony;
 
+use Stacktracer\SymfonyBundle\Service\TracingService;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\Mailer\Event\FailedMessageEvent;
 use Symfony\Component\Mailer\Event\MessageEvent;
 use Symfony\Component\Mailer\Event\SentMessageEvent;
 use Symfony\Component\Mime\Address;
 use Symfony\Component\Mime\Email;
-use Stacktracer\SymfonyBundle\Service\TracingService;
 
 /**
  * Mailer subscriber for tracking email sending operations.
@@ -188,7 +188,7 @@ final class MailerTracingSubscriber implements EventSubscriberInterface
     {
         // Truncate long subjects
         if (strlen($subject) > 100) {
-            return substr($subject, 0, 100).'...';
+            return substr($subject, 0, 100) . '...';
         }
 
         return $subject;

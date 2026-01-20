@@ -4,17 +4,17 @@ declare(strict_types=1);
 
 namespace Stacktracer\SymfonyBundle\Integration\Symfony;
 
+use Stacktracer\SymfonyBundle\Service\TracingService;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
+use Symfony\Component\HttpKernel\Event\ExceptionEvent;
 use Symfony\Component\Security\Core\Authentication\Token\TokenInterface;
 use Symfony\Component\Security\Core\Event\AuthenticationSuccessEvent;
+use Symfony\Component\Security\Core\Exception\AccessDeniedException;
+use Symfony\Component\Security\Core\Exception\AuthenticationException;
 use Symfony\Component\Security\Http\Event\InteractiveLoginEvent;
 use Symfony\Component\Security\Http\Event\LoginFailureEvent;
 use Symfony\Component\Security\Http\Event\LogoutEvent;
 use Symfony\Component\Security\Http\Event\SwitchUserEvent;
-use Symfony\Component\HttpKernel\Event\ExceptionEvent;
-use Symfony\Component\Security\Core\Exception\AccessDeniedException;
-use Symfony\Component\Security\Core\Exception\AuthenticationException;
-use Stacktracer\SymfonyBundle\Service\TracingService;
 
 /**
  * Security subscriber for tracking authentication and authorization events.
