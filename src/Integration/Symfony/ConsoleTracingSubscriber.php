@@ -10,13 +10,14 @@ use Symfony\Component\Console\ConsoleEvents;
 use Symfony\Component\Console\Event\ConsoleCommandEvent;
 use Symfony\Component\Console\Event\ConsoleErrorEvent;
 use Symfony\Component\Console\Event\ConsoleTerminateEvent;
+use Symfony\Component\ErrorHandler\Error\OutOfMemoryError;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 
 /**
  * Console command subscriber for tracing CLI command execution.
  *
  * Creates OTEL-compatible spans with cli.* semantic conventions for all
- * Symfony console commands.
+ * Symfony console commands. Includes OOM handling for memory exhaustion.
  *
  * @author Stacktracer <hello@stacktracer.io>
  */
@@ -30,9 +31,20 @@ final class ConsoleTracingSubscriber implements EventSubscriberInterface
 
     private int $memoryStart = 0;
 
-    public function __construct(TracingService $tracing)
+    /**
+     * Amount of memory (in bytes) to add when OOM is detected.
+     */
+    private int $oomMemoryIncrease;
+
+    /**
+     * Regex pattern to detect OOM error messages.
+     */
+    private const OOM_REGEX = '/Allowed memory size of (\d+) bytes exhausted/';
+
+    public function __construct(TracingService $tracing, int $oomMemoryIncrease = 5242880)
     {
         $this->tracing = $tracing;
+        $this->oomMemoryIncrease = $oomMemoryIncrease; // Default 5MB
     }
 
     /**
@@ -104,6 +116,12 @@ final class ConsoleTracingSubscriber implements EventSubscriberInterface
         }
 
         $exception = $event->getError();
+
+        // Handle OOM errors specially - increase memory limit to allow reporting
+        if ($this->isOutOfMemoryError($exception)) {
+            $this->handleOutOfMemory($exception);
+            $this->activeSpan->setAttribute('cli.oom', true);
+        }
 
         $this->activeSpan->setStatus('error');
         $this->activeSpan->setAttribute('error.type', get_class($exception));
@@ -186,5 +204,37 @@ final class ConsoleTracingSubscriber implements EventSubscriberInterface
         }
 
         return $sanitized;
+    }
+
+    /**
+     * Check if the throwable is an Out of Memory error.
+     */
+    private function isOutOfMemoryError(\Throwable $throwable): bool
+    {
+        if ($throwable instanceof OutOfMemoryError) {
+            return true;
+        }
+
+        if (str_contains(get_class($throwable), 'OutOfMemory')) {
+            return true;
+        }
+
+        return preg_match(self::OOM_REGEX, $throwable->getMessage()) === 1;
+    }
+
+    /**
+     * Handle Out of Memory errors by temporarily increasing memory limit.
+     */
+    private function handleOutOfMemory(\Throwable $throwable): void
+    {
+        if ($this->oomMemoryIncrease <= 0) {
+            return;
+        }
+
+        if (preg_match(self::OOM_REGEX, $throwable->getMessage(), $matches)) {
+            $currentLimit = (int) $matches[1];
+            $newLimit = $currentLimit + $this->oomMemoryIncrease;
+            @ini_set('memory_limit', (string) $newLimit);
+        }
     }
 }

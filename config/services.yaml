@@ -68,6 +68,7 @@ services:
     Stacktracer\SymfonyBundle\EventSubscriber\ExceptionTracingSubscriber:
         arguments:
             $tracing: '@Stacktracer\SymfonyBundle\Service\TracingService'
+            $oomMemoryIncrease: '%stacktracer.oom_memory_increase%'
         tags:
             - { name: kernel.event_subscriber }
 
@@ -79,6 +80,7 @@ services:
     Stacktracer\SymfonyBundle\Integration\Symfony\ConsoleTracingSubscriber:
         arguments:
             $tracing: '@Stacktracer\SymfonyBundle\Service\TracingService'
+            $oomMemoryIncrease: '%stacktracer.oom_memory_increase%'
         tags:
             - { name: kernel.event_subscriber }
 
