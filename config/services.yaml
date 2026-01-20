@@ -87,6 +87,14 @@ services:
         tags:
             - { name: kernel.event_subscriber }
 
+    # Controller tracing (optional - disabled by default)
+    Stacktracer\SymfonyBundle\EventSubscriber\ControllerTracingSubscriber:
+        arguments:
+            $tracing: '@Stacktracer\SymfonyBundle\Service\TracingService'
+            $enabled: '%stacktracer.integrations.controller.enabled%'
+        tags:
+            - { name: kernel.event_subscriber }
+
     # Metrics service
     Stacktracer\SymfonyBundle\Service\MetricsService:
         arguments:

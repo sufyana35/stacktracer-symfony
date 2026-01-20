@@ -90,6 +90,7 @@ final class StacktracerExtension extends Extension
         $container->setParameter('stacktracer.integrations.mailer.enabled', $config['integrations']['mailer']['enabled']);
         $container->setParameter('stacktracer.integrations.twig.enabled', $config['integrations']['twig']['enabled']);
         $container->setParameter('stacktracer.integrations.twig.slow_threshold', $config['integrations']['twig']['slow_threshold']);
+        $container->setParameter('stacktracer.integrations.controller.enabled', $config['integrations']['controller']['enabled']);
 
         // Event filtering callbacks
         $container->setParameter('stacktracer.before_send', $config['before_send']);
