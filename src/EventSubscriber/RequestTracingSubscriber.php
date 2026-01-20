@@ -39,6 +39,10 @@ final class RequestTracingSubscriber implements EventSubscriberInterface
         $this->excludePatterns = array_merge([
             '#^/_profiler#',
             '#^/_wdt#',
+            '#^/favicon\.ico$#',
+            '#^/robots\.txt$#',
+            '#^/apple-touch-icon#',
+            '#\.map$#',
         ], $excludePatterns);
     }
 
