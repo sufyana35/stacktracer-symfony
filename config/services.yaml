@@ -162,11 +162,18 @@ services:
         tags:
             - { name: kernel.event_subscriber }
 
-    # Twig template profiler extension
+    # Twig template tracing extension (provides twig functions)
     Stacktracer\SymfonyBundle\Integration\Symfony\TwigTracingExtension:
         arguments:
             $tracing: '@Stacktracer\SymfonyBundle\Service\TracingService'
-            $slowThreshold: '%stacktracer.integrations.twig.slow_threshold%'
         tags:
             - { name: twig.extension }
 
+    # Twig profiler subscriber (hooks into Twig's ProfilerExtension)
+    Stacktracer\SymfonyBundle\Integration\Symfony\TwigProfilerSubscriber:
+        arguments:
+            $tracing: '@Stacktracer\SymfonyBundle\Service\TracingService'
+            $twig: '@?twig'
+            $slowThreshold: '%stacktracer.integrations.twig.slow_threshold%'
+        tags:
+            - { name: kernel.event_subscriber }
