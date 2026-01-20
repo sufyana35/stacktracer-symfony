@@ -37,14 +37,28 @@ final class ConsoleTracingSubscriber implements EventSubscriberInterface
     private int $oomMemoryIncrease;
 
     /**
+     * Commands to exclude from tracing.
+     *
+     * @var string[]
+     */
+    private array $excludedCommands;
+
+    /**
      * Regex pattern to detect OOM error messages.
      */
     private const OOM_REGEX = '/Allowed memory size of (\d+) bytes exhausted/';
 
-    public function __construct(TracingService $tracing, int $oomMemoryIncrease = 5242880)
-    {
+    /**
+     * @param string[] $excludedCommands
+     */
+    public function __construct(
+        TracingService $tracing,
+        int $oomMemoryIncrease = 5242880,
+        array $excludedCommands = []
+    ) {
         $this->tracing = $tracing;
         $this->oomMemoryIncrease = $oomMemoryIncrease; // Default 5MB
+        $this->excludedCommands = $excludedCommands;
     }
 
     /**
@@ -68,6 +82,11 @@ final class ConsoleTracingSubscriber implements EventSubscriberInterface
         }
 
         $commandName = $command->getName() ?? 'unknown';
+
+        // Skip excluded commands
+        if ($this->isCommandExcluded($commandName)) {
+            return;
+        }
 
         // Start a new trace for CLI commands
         $trace = $this->tracing->startTrace(sprintf('cli %s', $commandName));
@@ -236,5 +255,13 @@ final class ConsoleTracingSubscriber implements EventSubscriberInterface
             $newLimit = $currentLimit + $this->oomMemoryIncrease;
             @ini_set('memory_limit', (string) $newLimit);
         }
+    }
+
+    /**
+     * Check if a command should be excluded from tracing.
+     */
+    private function isCommandExcluded(string $commandName): bool
+    {
+        return in_array($commandName, $this->excludedCommands, true);
     }
 }

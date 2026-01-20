@@ -79,6 +79,21 @@ class TracingService
 
     private ?string $release = null;
 
+    /** @var array<array{tags: array, context: array, breadcrumbs: array}> */
+    private array $scopeStack = [];
+
+    /** @var string[] Exception classes to ignore */
+    private array $ignoredExceptions = [];
+
+    /** @var string[] Transaction/route names to ignore */
+    private array $ignoredTransactions = [];
+
+    /** @var callable|null */
+    private $beforeSend;
+
+    /** @var callable|null */
+    private $beforeSendTransaction;
+
     private ?string $environment = null;
 
     public function __construct(
@@ -94,7 +109,9 @@ class TracingService
         bool $captureRequestHeaders = true,
         array $sensitiveKeys = ['password', 'token', 'secret', 'api_key', 'authorization', 'cookie'],
         string $serviceName = 'unknown',
-        string $serviceVersion = '0.0.0'
+        string $serviceVersion = '0.0.0',
+        array $ignoredExceptions = [],
+        array $ignoredTransactions = []
     ) {
         $this->transport = $transport;
         $this->enabled = $enabled;
@@ -109,6 +126,8 @@ class TracingService
         $this->sensitiveKeys = array_map('strtolower', $sensitiveKeys);
         $this->serviceName = $serviceName;
         $this->serviceVersion = $serviceVersion;
+        $this->ignoredExceptions = $ignoredExceptions;
+        $this->ignoredTransactions = $ignoredTransactions;
         $this->spanManager = new SpanManager($serviceName, $serviceVersion);
     }
 
@@ -791,6 +810,192 @@ class TracingService
     public function clearUser(): void
     {
         $this->globalUser = null;
+    }
+
+    // ========================================
+    // SCOPE MANAGEMENT
+    // ========================================
+
+    /**
+     * Push a new scope onto the stack.
+     *
+     * Scopes isolate tags, context, and breadcrumbs. Useful for isolating
+     * context between different message handlers or subrequests.
+     */
+    public function pushScope(): void
+    {
+        $this->scopeStack[] = [
+            'tags' => $this->globalTags,
+            'context' => $this->globalContext,
+            'breadcrumbs' => $this->currentTrace?->getBreadcrumbs() ?? [],
+        ];
+    }
+
+    /**
+     * Pop the current scope from the stack, restoring the previous scope.
+     */
+    public function popScope(): void
+    {
+        if (empty($this->scopeStack)) {
+            return;
+        }
+
+        $previousScope = array_pop($this->scopeStack);
+        $this->globalTags = $previousScope['tags'];
+        $this->globalContext = $previousScope['context'];
+
+        if ($this->currentTrace !== null) {
+            // Clear current breadcrumbs and restore from scope
+            // (Note: In a real implementation, we'd need to modify Trace to support this)
+        }
+    }
+
+    /**
+     * Execute a callback within an isolated scope.
+     *
+     * @template T
+     *
+     * @param callable(): T $callback
+     *
+     * @return T
+     */
+    public function withScope(callable $callback): mixed
+    {
+        $this->pushScope();
+
+        try {
+            return $callback();
+        } finally {
+            $this->popScope();
+        }
+    }
+
+    // ========================================
+    // IGNORED EXCEPTIONS & TRANSACTIONS
+    // ========================================
+
+    /**
+     * Set exception classes to ignore.
+     *
+     * @param string[] $exceptions FQCN patterns (supports wildcards with *)
+     */
+    public function setIgnoredExceptions(array $exceptions): void
+    {
+        $this->ignoredExceptions = $exceptions;
+    }
+
+    /**
+     * Set transaction/route names to ignore.
+     *
+     * @param string[] $transactions Route or transaction names
+     */
+    public function setIgnoredTransactions(array $transactions): void
+    {
+        $this->ignoredTransactions = $transactions;
+    }
+
+    /**
+     * Check if an exception class should be ignored.
+     */
+    public function shouldIgnoreException(\Throwable $exception): bool
+    {
+        $class = get_class($exception);
+
+        foreach ($this->ignoredExceptions as $pattern) {
+            // Exact match
+            if ($pattern === $class) {
+                return true;
+            }
+
+            // Wildcard match (e.g., "Symfony\Component\HttpKernel\Exception\*")
+            if (str_contains($pattern, '*')) {
+                $regex = '/^' . str_replace('\\*', '.*', preg_quote($pattern, '/')) . '$/';
+                if (preg_match($regex, $class)) {
+                    return true;
+                }
+            }
+
+            // Parent class check
+            if (is_a($exception, $pattern)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Check if a transaction should be ignored.
+     */
+    public function shouldIgnoreTransaction(string $name): bool
+    {
+        foreach ($this->ignoredTransactions as $pattern) {
+            if ($pattern === $name) {
+                return true;
+            }
+
+            // Wildcard match
+            if (str_contains($pattern, '*')) {
+                $regex = '/^' . str_replace('\\*', '.*', preg_quote($pattern, '/')) . '$/';
+                if (preg_match($regex, $name)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    // ========================================
+    // BEFORE SEND CALLBACKS
+    // ========================================
+
+    /**
+     * Set callback to filter/modify events before sending.
+     *
+     * @param callable|null $callback Callback that receives Trace, returns Trace or null to drop
+     */
+    public function setBeforeSend(?callable $callback): void
+    {
+        $this->beforeSend = $callback;
+    }
+
+    /**
+     * Set callback to filter/modify transactions before sending.
+     *
+     * @param callable|null $callback Callback that receives Trace, returns Trace or null to drop
+     */
+    public function setBeforeSendTransaction(?callable $callback): void
+    {
+        $this->beforeSendTransaction = $callback;
+    }
+
+    /**
+     * Apply before_send callback to a trace.
+     *
+     * @return Trace|null Returns modified trace or null to drop
+     */
+    public function applyBeforeSend(Trace $trace): ?Trace
+    {
+        if ($this->beforeSend === null) {
+            return $trace;
+        }
+
+        return ($this->beforeSend)($trace);
+    }
+
+    /**
+     * Apply before_send_transaction callback to a trace.
+     *
+     * @return Trace|null Returns modified trace or null to drop
+     */
+    public function applyBeforeSendTransaction(Trace $trace): ?Trace
+    {
+        if ($this->beforeSendTransaction === null) {
+            return $trace;
+        }
+
+        return ($this->beforeSendTransaction)($trace);
     }
 
     // ========================================

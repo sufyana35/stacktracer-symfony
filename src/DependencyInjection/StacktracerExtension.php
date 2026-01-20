@@ -80,13 +80,22 @@ final class StacktracerExtension extends Extension
         $container->setParameter('stacktracer.integrations.http_client.enabled', $config['integrations']['http_client']['enabled']);
         $container->setParameter('stacktracer.integrations.http_client.propagate_context', $config['integrations']['http_client']['propagate_context']);
         $container->setParameter('stacktracer.integrations.messenger.enabled', $config['integrations']['messenger']['enabled']);
+        $container->setParameter('stacktracer.integrations.messenger.capture_soft_fails', $config['integrations']['messenger']['capture_soft_fails']);
+        $container->setParameter('stacktracer.integrations.messenger.isolate_scope_by_message', $config['integrations']['messenger']['isolate_scope_by_message']);
         $container->setParameter('stacktracer.integrations.cache.enabled', $config['integrations']['cache']['enabled']);
         $container->setParameter('stacktracer.integrations.console.enabled', $config['integrations']['console']['enabled']);
+        $container->setParameter('stacktracer.integrations.console.excluded_commands', $config['integrations']['console']['excluded_commands']);
         $container->setParameter('stacktracer.integrations.form.enabled', $config['integrations']['form']['enabled']);
         $container->setParameter('stacktracer.integrations.security.enabled', $config['integrations']['security']['enabled']);
         $container->setParameter('stacktracer.integrations.mailer.enabled', $config['integrations']['mailer']['enabled']);
         $container->setParameter('stacktracer.integrations.twig.enabled', $config['integrations']['twig']['enabled']);
         $container->setParameter('stacktracer.integrations.twig.slow_threshold', $config['integrations']['twig']['slow_threshold']);
+
+        // Event filtering callbacks
+        $container->setParameter('stacktracer.before_send', $config['before_send']);
+        $container->setParameter('stacktracer.before_send_transaction', $config['before_send_transaction']);
+        $container->setParameter('stacktracer.ignored_exceptions', $config['ignored_exceptions']);
+        $container->setParameter('stacktracer.ignored_transactions', $config['ignored_transactions']);
 
         $loader = new YamlFileLoader($container, new FileLocator(__DIR__ . '/../../config'));
         $loader->load('services.yaml');
@@ -144,6 +153,11 @@ final class StacktracerExtension extends Extension
         if (!$config['integrations']['twig']['enabled'] || !class_exists('Twig\\Environment')) {
             $this->removeDefinitionIfExists($container, $integrationNs . 'TwigTracingSubscriber');
             $this->removeDefinitionIfExists($container, $integrationNs . 'TwigTracingExtension');
+        }
+
+        // Remove LoginListener if Security component not available
+        if (!interface_exists('Symfony\\Component\\Security\\Core\\Authentication\\Token\\Storage\\TokenStorageInterface')) {
+            $this->removeDefinitionIfExists($container, 'Stacktracer\\SymfonyBundle\\EventSubscriber\\LoginListener');
         }
     }
 

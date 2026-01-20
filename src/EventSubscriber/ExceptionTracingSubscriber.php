@@ -58,6 +58,11 @@ final class ExceptionTracingSubscriber implements EventSubscriberInterface
 
         $exception = $event->getThrowable();
 
+        // Check if this exception should be ignored
+        if ($this->tracing->shouldIgnoreException($exception)) {
+            return;
+        }
+
         // Handle OOM errors specially - increase memory limit to allow reporting
         if ($this->isOutOfMemoryError($exception)) {
             $this->handleOutOfMemory($exception);

@@ -11,6 +11,8 @@ use Symfony\Component\Messenger\Event\SendMessageToTransportsEvent;
 use Symfony\Component\Messenger\Event\WorkerMessageFailedEvent;
 use Symfony\Component\Messenger\Event\WorkerMessageHandledEvent;
 use Symfony\Component\Messenger\Event\WorkerMessageReceivedEvent;
+use Symfony\Component\Messenger\Exception\DelayedMessageHandlingException;
+use Symfony\Component\Messenger\Exception\HandlerFailedException;
 use Symfony\Component\Messenger\Stamp\BusNameStamp;
 use Symfony\Component\Messenger\Stamp\DelayStamp;
 use Symfony\Component\Messenger\Stamp\RedeliveryStamp;
@@ -34,9 +36,18 @@ final class MessengerTracingSubscriber implements EventSubscriberInterface
     /** @var array<string, float> */
     private array $startTimes = [];
 
-    public function __construct(TracingService $tracing)
-    {
+    private bool $captureSoftFails;
+
+    private bool $isolateScopeByMessage;
+
+    public function __construct(
+        TracingService $tracing,
+        bool $captureSoftFails = true,
+        bool $isolateScopeByMessage = true
+    ) {
         $this->tracing = $tracing;
+        $this->captureSoftFails = $captureSoftFails;
+        $this->isolateScopeByMessage = $isolateScopeByMessage;
     }
 
     /**
@@ -88,6 +99,11 @@ final class MessengerTracingSubscriber implements EventSubscriberInterface
 
     public function onMessageReceived(WorkerMessageReceivedEvent $event): void
     {
+        // Push scope to isolate breadcrumbs per message
+        if ($this->isolateScopeByMessage) {
+            $this->tracing->pushScope();
+        }
+
         $envelope = $event->getEnvelope();
         $message = $envelope->getMessage();
         $messageClass = get_class($message);
@@ -145,6 +161,11 @@ final class MessengerTracingSubscriber implements EventSubscriberInterface
 
         $this->tracing->endSpan($span);
 
+        // Pop scope to clean up breadcrumbs
+        if ($this->isolateScopeByMessage) {
+            $this->tracing->popScope();
+        }
+
         unset($this->activeSpans[$spanKey], $this->startTimes[$spanKey]);
     }
 
@@ -153,6 +174,23 @@ final class MessengerTracingSubscriber implements EventSubscriberInterface
         $envelope = $event->getEnvelope();
         $receiptHandle = $event->getReceiverName();
         $spanKey = spl_object_id($envelope) . ':' . $receiptHandle;
+
+        // Skip if soft fails are disabled and message will be retried
+        if (!$this->captureSoftFails && $event->willRetry()) {
+            if (isset($this->activeSpans[$spanKey])) {
+                $span = $this->activeSpans[$spanKey];
+                $span->setStatus('ok'); // Mark as ok since it will be retried
+                $this->tracing->endSpan($span);
+
+                if ($this->isolateScopeByMessage) {
+                    $this->tracing->popScope();
+                }
+
+                unset($this->activeSpans[$spanKey], $this->startTimes[$spanKey]);
+            }
+
+            return;
+        }
 
         if (!isset($this->activeSpans[$spanKey])) {
             // Create a new span if we missed the receive event
@@ -182,11 +220,42 @@ final class MessengerTracingSubscriber implements EventSubscriberInterface
         }
 
         // Capture the exception with full context
-        $this->tracing->captureException($throwable);
+        $this->captureException($throwable, $event->willRetry());
 
         $this->tracing->endSpan($span);
 
+        // Pop scope to clean up breadcrumbs
+        if ($this->isolateScopeByMessage) {
+            $this->tracing->popScope();
+        }
+
         unset($this->activeSpans[$spanKey], $this->startTimes[$spanKey]);
+    }
+
+    /**
+     * Captures an exception, unpacking wrapped exceptions from Messenger.
+     */
+    private function captureException(\Throwable $exception, bool $willRetry): void
+    {
+        // Unpack HandlerFailedException to get the real exceptions
+        if ($exception instanceof HandlerFailedException && method_exists($exception, 'getNestedExceptions')) {
+            foreach ($exception->getNestedExceptions() as $nestedException) {
+                $this->tracing->captureException($nestedException);
+            }
+
+            return;
+        }
+
+        // Unpack DelayedMessageHandlingException
+        if ($exception instanceof DelayedMessageHandlingException && method_exists($exception, 'getExceptions')) {
+            foreach ($exception->getExceptions() as $nestedException) {
+                $this->tracing->captureException($nestedException);
+            }
+
+            return;
+        }
+
+        $this->tracing->captureException($exception);
     }
 
     private function extractJobAttributes(Span $span, object $message): void

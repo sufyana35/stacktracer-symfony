@@ -38,6 +38,8 @@ services:
             $sensitiveKeys: '%stacktracer.sensitive_keys%'
             $serviceName: '%stacktracer.service_name%'
             $serviceVersion: '%stacktracer.service_version%'
+            $ignoredExceptions: '%stacktracer.ignored_exceptions%'
+            $ignoredTransactions: '%stacktracer.ignored_transactions%'
         public: true
         tags:
             - { name: kernel.reset, method: flush }
@@ -65,12 +67,35 @@ services:
         tags:
             - { name: kernel.event_subscriber }
 
+    Stacktracer\SymfonyBundle\EventSubscriber\SubRequestTracingSubscriber:
+        arguments:
+            $tracing: '@Stacktracer\SymfonyBundle\Service\TracingService'
+        tags:
+            - { name: kernel.event_subscriber }
+
     Stacktracer\SymfonyBundle\EventSubscriber\ExceptionTracingSubscriber:
         arguments:
             $tracing: '@Stacktracer\SymfonyBundle\Service\TracingService'
             $oomMemoryIncrease: '%stacktracer.oom_memory_increase%'
         tags:
             - { name: kernel.event_subscriber }
+
+    Stacktracer\SymfonyBundle\EventSubscriber\LoginListener:
+        arguments:
+            $tracing: '@Stacktracer\SymfonyBundle\Service\TracingService'
+            $tokenStorage: '@?security.token_storage'
+        tags:
+            - { name: kernel.event_subscriber }
+
+    # Metrics service
+    Stacktracer\SymfonyBundle\Service\MetricsService:
+        arguments:
+            $tracing: '@Stacktracer\SymfonyBundle\Service\TracingService'
+        public: true
+
+    stacktracer.metrics:
+        alias: Stacktracer\SymfonyBundle\Service\MetricsService
+        public: true
 
     # ============================================
     # Symfony Integrations (src/Integration/Symfony/)
@@ -81,6 +106,7 @@ services:
         arguments:
             $tracing: '@Stacktracer\SymfonyBundle\Service\TracingService'
             $oomMemoryIncrease: '%stacktracer.oom_memory_increase%'
+            $excludedCommands: '%stacktracer.integrations.console.excluded_commands%'
         tags:
             - { name: kernel.event_subscriber }
 
@@ -88,6 +114,8 @@ services:
     Stacktracer\SymfonyBundle\Integration\Symfony\MessengerTracingSubscriber:
         arguments:
             $tracing: '@Stacktracer\SymfonyBundle\Service\TracingService'
+            $captureSoftFails: '%stacktracer.integrations.messenger.capture_soft_fails%'
+            $isolateScopeByMessage: '%stacktracer.integrations.messenger.isolate_scope_by_message%'
         tags:
             - { name: kernel.event_subscriber }
 
