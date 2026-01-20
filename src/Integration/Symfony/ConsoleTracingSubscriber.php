@@ -90,7 +90,7 @@ final class ConsoleTracingSubscriber implements EventSubscriberInterface
 
         // Start a new trace for CLI commands
         $trace = $this->tracing->startTrace(sprintf('cli %s', $commandName));
-        $trace->setAttribute('trace.type', 'cli');
+        $trace->addTag('trace.type', 'cli');
 
         $this->activeSpan = $this->tracing->startSpan(sprintf('CMD %s', $commandName), 'cli');
 

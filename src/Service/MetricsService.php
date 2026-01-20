@@ -140,9 +140,11 @@ final class MetricsService
         // Attach to current trace if available
         $trace = $this->tracing->getCurrentTrace();
         if ($trace !== null) {
-            $existingMetrics = $trace->getContext()['metrics'] ?? [];
+            $context = $trace->getContext();
+            $existingMetrics = $context['metrics'] ?? [];
             $existingMetrics[] = $this->metrics[$key];
-            $trace->addContext(['metrics' => $existingMetrics]);
+            $context['metrics'] = $existingMetrics;
+            $trace->setContext($context);
         }
     }
 
