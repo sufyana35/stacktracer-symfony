@@ -57,13 +57,13 @@ final class FormTracingSubscriber implements EventSubscriberInterface
         $this->startTimes[$formKey] = microtime(true);
 
         $this->tracing->addBreadcrumb(
-            'Form submission started',
             'form',
-            'debug',
+            'Form submission started',
             [
                 'form.name' => $formName,
                 'form.type' => $this->getFormTypeName($form),
-            ]
+            ],
+            'debug'
         );
     }
 
@@ -106,10 +106,10 @@ final class FormTracingSubscriber implements EventSubscriberInterface
         }
 
         $this->tracing->addBreadcrumb(
-            $isValid ? 'Form submitted successfully' : 'Form validation failed',
             'form',
-            $isValid ? 'info' : 'warning',
-            $data
+            $isValid ? 'Form submitted successfully' : 'Form validation failed',
+            $data,
+            $isValid ? 'info' : 'warning'
         );
 
         // Create a span for form processing if spans are enabled
@@ -126,7 +126,7 @@ final class FormTracingSubscriber implements EventSubscriberInterface
             }
 
             $span->setStatus('error');
-            $this->tracing->finishSpan($span);
+            $this->tracing->endSpan($span);
         }
     }
 

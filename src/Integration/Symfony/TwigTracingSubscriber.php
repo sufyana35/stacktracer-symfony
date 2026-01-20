@@ -60,10 +60,10 @@ final class TwigTracingSubscriber implements EventSubscriberInterface
         }
 
         $this->tracing->addBreadcrumb(
-            sprintf('Twig error in %s', $data['template.name']),
             'template',
-            'error',
-            $data
+            sprintf('Twig error in %s', $data['template.name']),
+            $data,
+            'error'
         );
 
         // Create a span for the template error
@@ -72,6 +72,6 @@ final class TwigTracingSubscriber implements EventSubscriberInterface
         $span->setStatus('error');
         $span->setAttribute('error.type', get_class($exception));
         $span->setAttribute('error.message', $exception->getMessage());
-        $this->tracing->finishSpan($span);
+        $this->tracing->endSpan($span);
     }
 }

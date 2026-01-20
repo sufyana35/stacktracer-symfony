@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace Stacktracer\SymfonyBundle\Integration\Symfony;
 
-use Stacktracer\SymfonyBundle\Service\TracingService;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\Mailer\Event\FailedMessageEvent;
 use Symfony\Component\Mailer\Event\MessageEvent;
 use Symfony\Component\Mailer\Event\SentMessageEvent;
 use Symfony\Component\Mime\Address;
 use Symfony\Component\Mime\Email;
+use Stacktracer\SymfonyBundle\Service\TracingService;
 
 /**
  * Mailer subscriber for tracking email sending operations.
@@ -56,14 +56,14 @@ final class MailerTracingSubscriber implements EventSubscriberInterface
         $this->startTimes[$messageId] = microtime(true);
 
         $this->tracing->addBreadcrumb(
-            'Sending email',
             'mail',
-            'debug',
+            'Sending email',
             [
                 'mail.to' => $this->formatAddresses($message->getTo()),
                 'mail.subject' => $this->sanitizeSubject($message->getSubject() ?? ''),
                 'mail.transport' => $event->getTransport(),
-            ]
+            ],
+            'debug'
         );
     }
 
@@ -102,17 +102,17 @@ final class MailerTracingSubscriber implements EventSubscriberInterface
         }
 
         $this->tracing->addBreadcrumb(
-            'Email sent successfully',
             'mail',
-            'info',
-            $data
+            'Email sent successfully',
+            $data,
+            'info'
         );
 
         // Create a span for the email send
         $span = $this->tracing->startSpan('mail.send', 'mail');
         $span->setAttributes($data);
         $span->setStatus('ok');
-        $this->tracing->finishSpan($span);
+        $this->tracing->endSpan($span);
     }
 
     public function onFailedMessage(FailedMessageEvent $event): void
@@ -147,10 +147,10 @@ final class MailerTracingSubscriber implements EventSubscriberInterface
         }
 
         $this->tracing->addBreadcrumb(
-            'Email sending failed',
             'mail',
-            'error',
-            $data
+            'Email sending failed',
+            $data,
+            'error'
         );
 
         // Create a span for the failed email
@@ -159,7 +159,7 @@ final class MailerTracingSubscriber implements EventSubscriberInterface
         $span->setStatus('error');
         $span->setAttribute('error.type', get_class($error));
         $span->setAttribute('error.message', $error->getMessage());
-        $this->tracing->finishSpan($span);
+        $this->tracing->endSpan($span);
 
         // Also capture as exception for visibility
         $this->tracing->captureException($error);
@@ -188,7 +188,7 @@ final class MailerTracingSubscriber implements EventSubscriberInterface
     {
         // Truncate long subjects
         if (strlen($subject) > 100) {
-            return substr($subject, 0, 100) . '...';
+            return substr($subject, 0, 100).'...';
         }
 
         return $subject;

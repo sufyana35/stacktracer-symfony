@@ -4,17 +4,17 @@ declare(strict_types=1);
 
 namespace Stacktracer\SymfonyBundle\Integration\Symfony;
 
-use Stacktracer\SymfonyBundle\Service\TracingService;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
-use Symfony\Component\HttpKernel\Event\ExceptionEvent;
 use Symfony\Component\Security\Core\Authentication\Token\TokenInterface;
 use Symfony\Component\Security\Core\Event\AuthenticationSuccessEvent;
-use Symfony\Component\Security\Core\Exception\AccessDeniedException;
-use Symfony\Component\Security\Core\Exception\AuthenticationException;
 use Symfony\Component\Security\Http\Event\InteractiveLoginEvent;
 use Symfony\Component\Security\Http\Event\LoginFailureEvent;
 use Symfony\Component\Security\Http\Event\LogoutEvent;
 use Symfony\Component\Security\Http\Event\SwitchUserEvent;
+use Symfony\Component\HttpKernel\Event\ExceptionEvent;
+use Symfony\Component\Security\Core\Exception\AccessDeniedException;
+use Symfony\Component\Security\Core\Exception\AuthenticationException;
+use Stacktracer\SymfonyBundle\Service\TracingService;
 
 /**
  * Security subscriber for tracking authentication and authorization events.
@@ -65,10 +65,10 @@ final class SecurityTracingSubscriber implements EventSubscriberInterface
         }
 
         $this->tracing->addBreadcrumb(
-            'User logged in',
             'security',
-            'info',
-            $data
+            'User logged in',
+            $data,
+            'info'
         );
 
         // Set user context for the session
@@ -105,17 +105,17 @@ final class SecurityTracingSubscriber implements EventSubscriberInterface
         }
 
         $this->tracing->addBreadcrumb(
-            'Login attempt failed',
             'security',
-            'warning',
-            $data
+            'Login attempt failed',
+            $data,
+            'warning'
         );
 
         // Create a span for failed login
         $span = $this->tracing->startSpan('security.login_failure', 'security');
         $span->setAttributes($data);
         $span->setStatus('error');
-        $this->tracing->finishSpan($span);
+        $this->tracing->endSpan($span);
     }
 
     public function onLogout(LogoutEvent $event): void
@@ -124,15 +124,15 @@ final class SecurityTracingSubscriber implements EventSubscriberInterface
         $request = $event->getRequest();
 
         $this->tracing->addBreadcrumb(
-            'User logged out',
             'security',
-            'info',
+            'User logged out',
             [
                 'security.event' => 'logout',
                 'security.user' => $token !== null ? $this->getUserIdentifier($token) : 'unknown',
                 'security.ip' => $request->getClientIp(),
                 'security.firewall' => $this->getFirewallName($request),
-            ]
+            ],
+            'info'
         );
 
         // Clear user context
@@ -146,15 +146,15 @@ final class SecurityTracingSubscriber implements EventSubscriberInterface
         $originalToken = $event->getToken();
 
         $this->tracing->addBreadcrumb(
-            'User switched (impersonation)',
             'security',
-            'warning',
+            'User switched (impersonation)',
             [
                 'security.event' => 'switch_user',
                 'security.original_user' => $originalToken !== null ? $this->getUserIdentifier($originalToken) : 'unknown',
                 'security.target_user' => $targetUser->getUserIdentifier(),
                 'security.ip' => $request->getClientIp(),
-            ]
+            ],
+            'warning'
         );
     }
 
@@ -168,14 +168,14 @@ final class SecurityTracingSubscriber implements EventSubscriberInterface
         }
 
         $this->tracing->addBreadcrumb(
-            'Authentication successful',
             'security',
-            'debug',
+            'Authentication successful',
             [
                 'security.event' => 'auth_success',
                 'security.user' => $this->getUserIdentifier($token),
                 'security.roles' => $token->getRoleNames(),
-            ]
+            ],
+            'debug'
         );
     }
 
@@ -186,9 +186,8 @@ final class SecurityTracingSubscriber implements EventSubscriberInterface
 
         if ($exception instanceof AccessDeniedException) {
             $this->tracing->addBreadcrumb(
-                'Access denied',
                 'security',
-                'error',
+                'Access denied',
                 [
                     'security.event' => 'access_denied',
                     'security.path' => $request->getPathInfo(),
@@ -196,19 +195,20 @@ final class SecurityTracingSubscriber implements EventSubscriberInterface
                     'security.ip' => $request->getClientIp(),
                     'security.message' => $exception->getMessage(),
                     'security.attributes' => $exception->getAttributes(),
-                ]
+                ],
+                'error'
             );
         } elseif ($exception instanceof AuthenticationException) {
             $this->tracing->addBreadcrumb(
-                'Authentication required',
                 'security',
-                'warning',
+                'Authentication required',
                 [
                     'security.event' => 'auth_required',
                     'security.path' => $request->getPathInfo(),
                     'security.ip' => $request->getClientIp(),
                     'security.message' => $exception->getMessage(),
-                ]
+                ],
+                'warning'
             );
         }
     }
