@@ -64,6 +64,18 @@ final class RequestTracingSubscriber implements EventSubscriberInterface
         $request = $event->getRequest();
         $path = $request->getPathInfo();
 
+        // Skip prefetch/prerender requests (browser speculative loading)
+        $purpose = $request->headers->get('Purpose') ?? $request->headers->get('Sec-Purpose') ?? '';
+        if (in_array(strtolower($purpose), ['prefetch', 'prerender'], true)) {
+            return;
+        }
+
+        // Skip fetch metadata prefetch hints
+        $fetchMode = $request->headers->get('Sec-Fetch-Mode', '');
+        if ($fetchMode === 'prefetch') {
+            return;
+        }
+
         foreach ($this->excludePatterns as $pattern) {
             if (preg_match($pattern, $path)) {
                 return;
