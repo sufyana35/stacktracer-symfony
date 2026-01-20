@@ -83,7 +83,7 @@ final class MessengerTracingSubscriber implements EventSubscriberInterface
         // Extract job-specific attributes from message if available
         $this->extractJobAttributes($span, $message);
 
-        $this->tracing->finishSpan($span);
+        $this->tracing->endSpan($span);
     }
 
     public function onMessageReceived(WorkerMessageReceivedEvent $event): void
@@ -143,7 +143,7 @@ final class MessengerTracingSubscriber implements EventSubscriberInterface
             $span->setAttribute('job.duration_ms', round($duration, 2));
         }
 
-        $this->tracing->finishSpan($span);
+        $this->tracing->endSpan($span);
 
         unset($this->activeSpans[$spanKey], $this->startTimes[$spanKey]);
     }
@@ -184,7 +184,7 @@ final class MessengerTracingSubscriber implements EventSubscriberInterface
         // Capture the exception with full context
         $this->tracing->captureException($throwable);
 
-        $this->tracing->finishSpan($span);
+        $this->tracing->endSpan($span);
 
         unset($this->activeSpans[$spanKey], $this->startTimes[$spanKey]);
     }

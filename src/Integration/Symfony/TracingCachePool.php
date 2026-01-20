@@ -62,7 +62,7 @@ final class TracingCachePool implements CacheItemPoolInterface
             }
 
             $span->setStatus('ok');
-            $this->tracing->finishSpan($span);
+            $this->tracing->endSpan($span);
 
             return $item;
         } catch (\Throwable $e) {
@@ -71,7 +71,7 @@ final class TracingCachePool implements CacheItemPoolInterface
             $span->setAttribute('cache.hit', false);
             $span->setAttribute('error.type', get_class($e));
             $span->setAttribute('error.message', $e->getMessage());
-            $this->tracing->finishSpan($span);
+            $this->tracing->endSpan($span);
 
             throw $e;
         }
@@ -115,7 +115,7 @@ final class TracingCachePool implements CacheItemPoolInterface
             $span->setAttribute('cache.hits', $hitCount);
             $span->setAttribute('cache.misses', $missCount);
             $span->setStatus('ok');
-            $this->tracing->finishSpan($span);
+            $this->tracing->endSpan($span);
 
             return $result;
         } catch (\Throwable $e) {
@@ -123,7 +123,7 @@ final class TracingCachePool implements CacheItemPoolInterface
             $span->setStatus('error');
             $span->setAttribute('error.type', get_class($e));
             $span->setAttribute('error.message', $e->getMessage());
-            $this->tracing->finishSpan($span);
+            $this->tracing->endSpan($span);
 
             throw $e;
         }
@@ -140,14 +140,14 @@ final class TracingCachePool implements CacheItemPoolInterface
             $result = $this->pool->hasItem($key);
             $span->setAttribute('cache.exists', $result);
             $span->setStatus('ok');
-            $this->tracing->finishSpan($span);
+            $this->tracing->endSpan($span);
 
             return $result;
         } catch (\Throwable $e) {
             $span->setStatus('error');
             $span->setAttribute('error.type', get_class($e));
             $span->setAttribute('error.message', $e->getMessage());
-            $this->tracing->finishSpan($span);
+            $this->tracing->endSpan($span);
 
             throw $e;
         }
@@ -163,7 +163,7 @@ final class TracingCachePool implements CacheItemPoolInterface
             $result = $this->pool->clear();
             $span->setAttribute('cache.cleared', $result);
             $span->setStatus($result ? 'ok' : 'error');
-            $this->tracing->finishSpan($span);
+            $this->tracing->endSpan($span);
 
             // Reset counters
             $this->hits = 0;
@@ -174,7 +174,7 @@ final class TracingCachePool implements CacheItemPoolInterface
             $span->setStatus('error');
             $span->setAttribute('error.type', get_class($e));
             $span->setAttribute('error.message', $e->getMessage());
-            $this->tracing->finishSpan($span);
+            $this->tracing->endSpan($span);
 
             throw $e;
         }
@@ -191,14 +191,14 @@ final class TracingCachePool implements CacheItemPoolInterface
             $result = $this->pool->deleteItem($key);
             $span->setAttribute('cache.deleted', $result);
             $span->setStatus($result ? 'ok' : 'error');
-            $this->tracing->finishSpan($span);
+            $this->tracing->endSpan($span);
 
             return $result;
         } catch (\Throwable $e) {
             $span->setStatus('error');
             $span->setAttribute('error.type', get_class($e));
             $span->setAttribute('error.message', $e->getMessage());
-            $this->tracing->finishSpan($span);
+            $this->tracing->endSpan($span);
 
             throw $e;
         }
@@ -218,14 +218,14 @@ final class TracingCachePool implements CacheItemPoolInterface
             $result = $this->pool->deleteItems($keys);
             $span->setAttribute('cache.deleted', $result);
             $span->setStatus($result ? 'ok' : 'error');
-            $this->tracing->finishSpan($span);
+            $this->tracing->endSpan($span);
 
             return $result;
         } catch (\Throwable $e) {
             $span->setStatus('error');
             $span->setAttribute('error.type', get_class($e));
             $span->setAttribute('error.message', $e->getMessage());
-            $this->tracing->finishSpan($span);
+            $this->tracing->endSpan($span);
 
             throw $e;
         }
@@ -242,14 +242,14 @@ final class TracingCachePool implements CacheItemPoolInterface
             $result = $this->pool->save($item);
             $span->setAttribute('cache.saved', $result);
             $span->setStatus($result ? 'ok' : 'error');
-            $this->tracing->finishSpan($span);
+            $this->tracing->endSpan($span);
 
             return $result;
         } catch (\Throwable $e) {
             $span->setStatus('error');
             $span->setAttribute('error.type', get_class($e));
             $span->setAttribute('error.message', $e->getMessage());
-            $this->tracing->finishSpan($span);
+            $this->tracing->endSpan($span);
 
             throw $e;
         }
@@ -266,14 +266,14 @@ final class TracingCachePool implements CacheItemPoolInterface
             $result = $this->pool->saveDeferred($item);
             $span->setAttribute('cache.deferred', $result);
             $span->setStatus($result ? 'ok' : 'error');
-            $this->tracing->finishSpan($span);
+            $this->tracing->endSpan($span);
 
             return $result;
         } catch (\Throwable $e) {
             $span->setStatus('error');
             $span->setAttribute('error.type', get_class($e));
             $span->setAttribute('error.message', $e->getMessage());
-            $this->tracing->finishSpan($span);
+            $this->tracing->endSpan($span);
 
             throw $e;
         }
@@ -289,14 +289,14 @@ final class TracingCachePool implements CacheItemPoolInterface
             $result = $this->pool->commit();
             $span->setAttribute('cache.committed', $result);
             $span->setStatus($result ? 'ok' : 'error');
-            $this->tracing->finishSpan($span);
+            $this->tracing->endSpan($span);
 
             return $result;
         } catch (\Throwable $e) {
             $span->setStatus('error');
             $span->setAttribute('error.type', get_class($e));
             $span->setAttribute('error.message', $e->getMessage());
-            $this->tracing->finishSpan($span);
+            $this->tracing->endSpan($span);
 
             throw $e;
         }

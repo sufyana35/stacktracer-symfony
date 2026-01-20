@@ -159,7 +159,7 @@ final class TracingResponse implements ResponseInterface
             $this->span->setAttribute('http.connect_time_ms', round($info['connect_time'] * 1000, 2));
         }
 
-        $this->tracing->finishSpan($this->span);
+        $this->tracing->endSpan($this->span);
         $this->spanFinished = true;
     }
 }

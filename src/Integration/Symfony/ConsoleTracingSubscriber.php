@@ -145,8 +145,8 @@ final class ConsoleTracingSubscriber implements EventSubscriberInterface
             $this->activeSpan->setStatus('error');
         }
 
-        $this->tracing->finishSpan($this->activeSpan);
-        $this->tracing->finishTrace();
+        $this->tracing->endSpan($this->activeSpan);
+        $this->tracing->endTrace();
 
         $this->activeSpan = null;
         $this->startTime = 0.0;

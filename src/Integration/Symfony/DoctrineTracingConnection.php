@@ -97,14 +97,14 @@ final class DoctrineTracingConnection extends AbstractConnectionMiddleware
                 $span->setAttribute('db.duration_ms', round($duration, 2));
             }
 
-            $this->tracing->finishSpan($span);
+            $this->tracing->endSpan($span);
 
             return $result;
         } catch (\Throwable $e) {
             $span->setStatus('error');
             $span->setAttribute('error.type', get_class($e));
             $span->setAttribute('error.message', $e->getMessage());
-            $this->tracing->finishSpan($span);
+            $this->tracing->endSpan($span);
 
             throw $e;
         }

@@ -84,7 +84,7 @@ final class TwigTracingExtension extends AbstractExtension
             $span = $this->tracing->startSpan(sprintf('template.%s', $this->getShortTemplateName($templateName)), 'template');
             $span->setAttributes($data);
             $span->setStatus('ok');
-            $this->tracing->finishSpan($span);
+            $this->tracing->endSpan($span);
         }
     }
 

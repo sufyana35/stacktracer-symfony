@@ -87,7 +87,7 @@ final class TracingHttpClient implements HttpClientInterface
             $span->setStatus('error');
             $span->setAttribute('error.type', get_class($e));
             $span->setAttribute('error.message', $e->getMessage());
-            $this->tracing->finishSpan($span);
+            $this->tracing->endSpan($span);
 
             throw $e;
         }
