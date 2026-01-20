@@ -96,8 +96,16 @@ final class TwigProfilerSubscriber implements EventSubscriberInterface
             return;
         }
 
-        // Process the collected profile data
-        $this->processProfile($this->profile);
+        // Calculate the reference time from the root profile
+        // The root profile's duration tells us when templates finished
+        $rootDuration = $this->profile->getDuration();
+        $now = microtime(true);
+        
+        // Templates finished at "now", so root started at now - rootDuration
+        $rootEndTime = $now;
+        
+        // Process the collected profile data with proper timing
+        $this->processProfile($this->profile, 0, $rootEndTime);
         
         // Reset the profile for the next request
         $this->profile->reset();
@@ -105,43 +113,62 @@ final class TwigProfilerSubscriber implements EventSubscriberInterface
 
     /**
      * Recursively process Twig profile and create spans.
+     * 
+     * @param Profile $profile The profile to process
+     * @param int $depth Current recursion depth
+     * @param float $parentEndTime When the parent template finished rendering
      */
-    private function processProfile(Profile $profile, int $depth = 0): void
+    private function processProfile(Profile $profile, int $depth = 0, float $parentEndTime = 0): void
     {
         if ($depth > 20) {
             return; // Prevent infinite recursion
         }
 
         // Process child profiles (templates are nested)
+        // Work backwards from parent end time
+        $childEndTime = $parentEndTime;
+        
         foreach ($profile as $child) {
-            $this->processChildProfile($child, $depth + 1);
+            $this->processChildProfile($child, $depth + 1, $childEndTime);
+            // Move backwards in time for next child (approximate ordering)
+            $childEndTime -= $child->getDuration();
         }
     }
 
     /**
      * Process a single profile entry.
+     * 
+     * @param Profile $profile The profile entry
+     * @param int $depth Current recursion depth
+     * @param float $endTime When this template finished rendering
      */
-    private function processChildProfile(Profile $profile, int $depth): void
+    private function processChildProfile(Profile $profile, int $depth, float $endTime): void
     {
         if ($profile->isTemplate()) {
             $templateName = $profile->getName();
-            $duration = $profile->getDuration() * 1000; // Convert to ms
+            $durationSeconds = $profile->getDuration();
+            $durationMs = $durationSeconds * 1000;
+            
+            // Calculate proper timestamps
+            $startTime = $endTime - $durationSeconds;
             
             $span = $this->tracing->startSpan(
                 sprintf('twig.render %s', $this->getShortTemplateName($templateName)),
                 Span::KIND_INTERNAL
             );
             
+            // Override the timestamps to match actual render times
+            $span->setStartTime($startTime);
+            
             $attributes = [
                 'template.name' => $templateName,
                 'template.engine' => 'twig',
-                'template.duration_ms' => round($duration, 2),
             ];
             
-            if ($duration >= $this->slowThreshold) {
+            if ($durationMs >= $this->slowThreshold) {
                 $attributes['template.slow'] = true;
                 $this->tracing->addBreadcrumb(
-                    sprintf('Slow template render: %s (%.2fms)', $templateName, $duration),
+                    sprintf('Slow template render: %s (%.2fms)', $templateName, $durationMs),
                     'template',
                     'warning',
                     $attributes
@@ -150,13 +177,12 @@ final class TwigProfilerSubscriber implements EventSubscriberInterface
             
             $span->setAttributes($attributes);
             $span->setStatus('OK');
+            $span->end($endTime);
             $this->tracing->endSpan($span);
         }
 
-        // Process nested profiles
-        foreach ($profile as $child) {
-            $this->processChildProfile($child, $depth + 1);
-        }
+        // Process nested profiles with current end time as reference
+        $this->processProfile($profile, $depth, $endTime);
     }
 
     private function getShortTemplateName(string $name): string

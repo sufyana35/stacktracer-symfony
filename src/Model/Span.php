@@ -136,6 +136,16 @@ class Span implements \JsonSerializable
         return $this->startTime;
     }
 
+    /**
+     * Override the start time for spans created after the fact.
+     * Useful for integrations that collect timing data after completion.
+     */
+    public function setStartTime(float $startTime): self
+    {
+        $this->startTime = $startTime;
+        return $this;
+    }
+
     public function getEndTime(): ?float
     {
         return $this->endTime;
