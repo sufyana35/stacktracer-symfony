@@ -96,6 +96,22 @@ services:
         tags:
             - { name: kernel.event_subscriber }
 
+    # Kernel event tracing (detailed kernel lifecycle spans)
+    Stacktracer\SymfonyBundle\EventSubscriber\KernelEventTracingSubscriber:
+        arguments:
+            $tracing: '@Stacktracer\SymfonyBundle\Service\TracingService'
+        tags:
+            - { name: kernel.event_subscriber }
+
+    # Listener tracing (individual event listener timing)
+    Stacktracer\SymfonyBundle\EventSubscriber\ListenerTracingSubscriber:
+        arguments:
+            $tracing: '@Stacktracer\SymfonyBundle\Service\TracingService'
+            $stopwatch: '@?debug.stopwatch'
+            $dispatcher: '@?debug.event_dispatcher'
+        tags:
+            - { name: kernel.event_subscriber }
+
     # Metrics service
     Stacktracer\SymfonyBundle\Service\MetricsService:
         arguments:

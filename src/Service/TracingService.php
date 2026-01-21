@@ -226,6 +226,14 @@ class TracingService
     }
 
     /**
+     * Check if there is an active trace.
+     */
+    public function hasActiveTrace(): bool
+    {
+        return $this->currentTrace !== null;
+    }
+
+    /**
      * Get current trace ID.
      */
     public function getCurrentTraceId(): ?string
