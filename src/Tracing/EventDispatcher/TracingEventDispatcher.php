@@ -60,6 +60,14 @@ class TracingEventDispatcher implements EventDispatcherInterface
     {
         $eventName = $eventName ?? get_class($event);
         
+        // For kernel.request, we need to let RequestTracingSubscriber create the trace first
+        // After that, hasActiveTrace() will return true for subsequent events
+        if ($eventName === 'kernel.request') {
+            // First, dispatch the event normally to let trace be created
+            $result = $this->dispatcher->dispatch($event, $eventName);
+            return $result;
+        }
+        
         // Check if we should trace this event
         if (!$this->shouldTrace($eventName)) {
             return $this->dispatcher->dispatch($event, $eventName);
@@ -132,7 +140,9 @@ class TracingEventDispatcher implements EventDispatcherInterface
                 $class = get_class($listener[0]);
                 // Shorten the class name for readability
                 $shortClass = substr($class, strrpos($class, '\\') + 1);
-                return $shortClass;
+                // Include method name for clarity
+                $method = $listener[1] ?? '__invoke';
+                return $shortClass . '::' . $method;
             }
             return $listener[0] . '::' . $listener[1];
         }
@@ -142,6 +152,29 @@ class TracingEventDispatcher implements EventDispatcherInterface
             $shortClass = substr($class, strrpos($class, '\\') + 1);
             
             if ($listener instanceof \Closure) {
+                // Try to get info about the closure
+                try {
+                    $ref = new \ReflectionFunction($listener);
+                    if ($closureThis = $ref->getClosureThis()) {
+                        $thisClass = get_class($closureThis);
+                        $thisShort = substr($thisClass, strrpos($thisClass, '\\') + 1);
+                        return $thisShort . '::closure';
+                    }
+                    // Check for closure class attribute (Symfony's lazy loading)
+                    if ($attrs = $ref->getAttributes()) {
+                        foreach ($attrs as $attr) {
+                            if ($attr->getName() === 'Closure') {
+                                $args = $attr->getArguments();
+                                if (isset($args['class'])) {
+                                    $cls = $args['class'];
+                                    return substr($cls, strrpos($cls, '\\') + 1);
+                                }
+                            }
+                        }
+                    }
+                } catch (\ReflectionException $e) {
+                    // ignore
+                }
                 return 'Closure';
             }
             
@@ -194,7 +227,10 @@ class TracingEventDispatcher implements EventDispatcherInterface
     // Delegate all other methods to inner dispatcher
     // ========================================
 
-    public function addListener(string $eventName, callable $listener, int $priority = 0): void
+    /**
+     * @param callable|array $listener Symfony uses lazy-loaded arrays in dev mode
+     */
+    public function addListener(string $eventName, $listener, int $priority = 0): void
     {
         $this->dispatcher->addListener($eventName, $listener, $priority);
     }
@@ -204,7 +240,10 @@ class TracingEventDispatcher implements EventDispatcherInterface
         $this->dispatcher->addSubscriber($subscriber);
     }
 
-    public function removeListener(string $eventName, callable $listener): void
+    /**
+     * @param callable|array $listener
+     */
+    public function removeListener(string $eventName, $listener): void
     {
         $this->dispatcher->removeListener($eventName, $listener);
     }

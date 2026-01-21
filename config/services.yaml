@@ -108,7 +108,7 @@ services:
             $dispatcher: '@.inner'
             $tracing: '@Stacktracer\SymfonyBundle\Service\TracingService'
             $tracedEvents: []  # Empty = use defaults (all kernel.* events)
-            $minDurationMs: 0.1  # Only create spans for listeners taking > 0.1ms
+            $minDurationMs: 0.01  # Capture listeners taking > 0.01ms (10 microseconds)
 
     # Metrics service
     Stacktracer\SymfonyBundle\Service\MetricsService:
