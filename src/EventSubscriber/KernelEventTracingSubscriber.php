@@ -45,48 +45,49 @@ final class KernelEventTracingSubscriber implements EventSubscriberInterface
 
     public static function getSubscribedEvents(): array
     {
-        // We use specific priorities to wrap around other listeners
+        // Priorities must be lower than RequestTracingSubscriber (1000) so trace exists
+        // But higher than most other listeners to capture timing accurately
         return [
             // kernel.request - capture the entire request handling phase
             KernelEvents::REQUEST => [
-                ['onRequestStart', 2048],    // Very early - start span
-                ['onRequestEnd', -2048],     // Very late - end span
+                ['onRequestStart', 900],     // After trace is started (RequestTracingSubscriber is 1000)
+                ['onRequestEnd', -900],      // Before trace ends
             ],
             
             // kernel.controller - when controller is resolved
             KernelEvents::CONTROLLER => [
-                ['onControllerStart', 2048],
-                ['onControllerEnd', -2048],
+                ['onControllerStart', 900],
+                ['onControllerEnd', -900],
             ],
             
             // kernel.controller_arguments - when controller arguments are resolved
             KernelEvents::CONTROLLER_ARGUMENTS => [
-                ['onControllerArgumentsStart', 2048],
-                ['onControllerArgumentsEnd', -2048],
+                ['onControllerArgumentsStart', 900],
+                ['onControllerArgumentsEnd', -900],
             ],
             
             // kernel.view - when controller returns non-Response
             KernelEvents::VIEW => [
-                ['onViewStart', 2048],
-                ['onViewEnd', -2048],
+                ['onViewStart', 900],
+                ['onViewEnd', -900],
             ],
             
             // kernel.response - response processing phase
             KernelEvents::RESPONSE => [
-                ['onResponseStart', 2048],
-                ['onResponseEnd', -2048],
+                ['onResponseStart', 900],
+                ['onResponseEnd', -900],
             ],
             
             // kernel.finish_request
             KernelEvents::FINISH_REQUEST => [
-                ['onFinishRequestStart', 2048],
-                ['onFinishRequestEnd', -2048],
+                ['onFinishRequestStart', 900],
+                ['onFinishRequestEnd', -900],
             ],
             
             // kernel.terminate - after response is sent
             KernelEvents::TERMINATE => [
-                ['onTerminateStart', 2048],
-                ['onTerminateEnd', -2048],
+                ['onTerminateStart', 900],
+                ['onTerminateEnd', -900],
             ],
         ];
     }

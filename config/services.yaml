@@ -96,21 +96,19 @@ services:
         tags:
             - { name: kernel.event_subscriber }
 
-    # Kernel event tracing (detailed kernel lifecycle spans)
-    Stacktracer\SymfonyBundle\EventSubscriber\KernelEventTracingSubscriber:
+    # ================================================
+    # Production-ready Event Dispatcher Decorator
+    # ================================================
+    # This wraps the event dispatcher to time individual listeners
+    # Works in BOTH development AND production environments
+    Stacktracer\SymfonyBundle\Tracing\EventDispatcher\TracingEventDispatcher:
+        decorates: 'event_dispatcher'
+        decoration_priority: -10  # Low priority = outermost decorator
         arguments:
+            $dispatcher: '@.inner'
             $tracing: '@Stacktracer\SymfonyBundle\Service\TracingService'
-        tags:
-            - { name: kernel.event_subscriber }
-
-    # Listener tracing (individual event listener timing)
-    Stacktracer\SymfonyBundle\EventSubscriber\ListenerTracingSubscriber:
-        arguments:
-            $tracing: '@Stacktracer\SymfonyBundle\Service\TracingService'
-            $stopwatch: '@?debug.stopwatch'
-            $dispatcher: '@?debug.event_dispatcher'
-        tags:
-            - { name: kernel.event_subscriber }
+            $tracedEvents: []  # Empty = use defaults (all kernel.* events)
+            $minDurationMs: 0.1  # Only create spans for listeners taking > 0.1ms
 
     # Metrics service
     Stacktracer\SymfonyBundle\Service\MetricsService:
