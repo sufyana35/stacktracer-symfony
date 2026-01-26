@@ -122,6 +122,7 @@ class TracingEventDispatcher implements EventDispatcherInterface
     private function createListenerSpan(string $listenerName, string $eventName, float $durationMs): void
     {
         $span = $this->tracing->startSpan($listenerName, Span::KIND_INTERNAL);
+        $span->setOrigin('auto.http.server');
         
         $span->setAttributes([
             'listener.name' => $listenerName,

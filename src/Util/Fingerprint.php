@@ -25,6 +25,11 @@ final class Fingerprint
     /**
      * Compute a fingerprint for an exception.
      * Combines exception type, normalized message, and stack trace.
+     *
+     * @param \Throwable $exception  The exception to fingerprint
+     * @param int        $stackDepth Number of stack frames to include
+     *
+     * @return string The fingerprint hash (16 hex chars)
      */
     public static function exception(\Throwable $exception, int $stackDepth = 5): string
     {
@@ -47,6 +52,10 @@ final class Fingerprint
     /**
      * Compute a grouping key for exceptions (less specific).
      * Groups exceptions of same type at same location.
+     *
+     * @param \Throwable $exception The exception to group
+     *
+     * @return string The group key hash (16 hex chars)
      */
     public static function exceptionGroup(\Throwable $exception): string
     {
@@ -58,18 +67,26 @@ final class Fingerprint
 
     /**
      * Get exception location signature.
+     *
+     * @param \Throwable $exception The exception
+     *
+     * @return string The location string (file:line)
      */
     private static function exceptionLocation(\Throwable $exception): string
     {
-        return self::normalizePath($exception->getFile()) . ':' . $exception->getLine();
+        return PathUtils::normalize($exception->getFile()) . ':' . $exception->getLine();
     }
 
     /**
      * Compute fingerprint for a stack frame.
+     *
+     * @param array $frame The stack frame array
+     *
+     * @return string The frame signature
      */
     public static function frameSignature(array $frame): string
     {
-        $file = self::normalizePath($frame['file'] ?? '[internal]');
+        $file = PathUtils::normalize($frame['file'] ?? '[internal]');
         $line = $frame['line'] ?? 0;
         $class = $frame['class'] ?? '';
         $function = $frame['function'] ?? '';
@@ -79,6 +96,11 @@ final class Fingerprint
 
     /**
      * Compute fingerprint for an entire stack trace.
+     *
+     * @param array $trace     The stack trace array
+     * @param int   $maxFrames Maximum frames to include
+     *
+     * @return string The stack trace fingerprint
      */
     public static function stackTrace(array $trace, int $maxFrames = 10): string
     {
@@ -88,7 +110,7 @@ final class Fingerprint
         foreach ($trace as $frame) {
             // Skip vendor frames
             $file = $frame['file'] ?? '';
-            if (self::isVendorPath($file)) {
+            if (PathUtils::isVendor($file)) {
                 continue;
             }
 
@@ -115,6 +137,10 @@ final class Fingerprint
 
     /**
      * Normalize an exception message by replacing variable data.
+     *
+     * @param string $message The message to normalize
+     *
+     * @return string The normalized message
      */
     public static function normalizeMessage(string $message): string
     {
@@ -149,24 +175,30 @@ final class Fingerprint
 
     /**
      * Normalize a file path for consistent fingerprinting.
+     *
+     * @param string $path The file path to normalize
+     *
+     * @return string The normalized path
+     *
+     * @deprecated Use PathUtils::normalize() instead
      */
     public static function normalizePath(string $path): string
     {
-        // Keep only the relevant part (from src/app/vendor onwards)
-        if (preg_match('#/(src|app|lib|vendor)/.*$#', $path, $matches)) {
-            return $matches[0];
-        }
-
-        // Fallback to basename
-        return basename($path);
+        return PathUtils::normalize($path);
     }
 
     /**
      * Fingerprint a request for grouping.
+     *
+     * @param string   $method     The HTTP method
+     * @param string   $path       The request path
+     * @param int|null $statusCode Optional status code
+     *
+     * @return string The request fingerprint
      */
     public static function request(string $method, string $path, ?int $statusCode = null): string
     {
-        $normalizedPath = self::normalizePath($path);
+        $normalizedPath = PathUtils::normalize($path);
 
         $components = [
             strtoupper($method),
@@ -203,6 +235,12 @@ final class Fingerprint
 
     /**
      * Fingerprint a log message for deduplication.
+     *
+     * @param string      $message The log message
+     * @param string|null $channel The log channel
+     * @param string|null $level   The log level
+     *
+     * @return string The log fingerprint
      */
     public static function logMessage(string $message, ?string $channel = null, ?string $level = null): string
     {
@@ -223,6 +261,11 @@ final class Fingerprint
 
     /**
      * Fingerprint a breadcrumb trail for grouping.
+     *
+     * @param array $breadcrumbs Array of breadcrumbs
+     * @param int   $lastN       Number of most recent breadcrumbs to include
+     *
+     * @return string The trail fingerprint
      */
     public static function breadcrumbTrail(array $breadcrumbs, int $lastN = 5): string
     {
@@ -240,6 +283,10 @@ final class Fingerprint
 
     /**
      * Compute hash using xxh3 (fast, low collision).
+     *
+     * @param string $data The data to hash
+     *
+     * @return string The 16-character hex hash
      */
     public static function hash(string $data): string
     {
@@ -248,6 +295,10 @@ final class Fingerprint
 
     /**
      * Compute a short hash (8 chars) for display.
+     *
+     * @param string $data The data to hash
+     *
+     * @return string The 8-character hex hash
      */
     public static function shortHash(string $data): string
     {
@@ -255,16 +306,12 @@ final class Fingerprint
     }
 
     /**
-     * Check if path is in vendor directory.
-     */
-    private static function isVendorPath(string $path): bool
-    {
-        return str_contains($path, '/vendor/') || str_contains($path, '\\vendor\\');
-    }
-
-    /**
      * Generate a content-based hash for deduplication.
      * Combines multiple fields into a single fingerprint.
+     *
+     * @param array $fields Array of field values
+     *
+     * @return string The composite fingerprint
      */
     public static function composite(array $fields): string
     {

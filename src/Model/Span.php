@@ -66,6 +66,9 @@ class Span implements \JsonSerializable
 
     private array $resource;
 
+    /** @var string|null Origin of the span (auto.db, auto.http.server, auto.cache, etc.) */
+    private ?string $origin = null;
+
     public function __construct(
         string $name,
         string $kind = self::KIND_INTERNAL,
@@ -347,6 +350,28 @@ class Span implements \JsonSerializable
         return $this->resource;
     }
 
+    // --- Origin (for span categorization) ---
+
+    /**
+     * Set the origin of this span.
+     * 
+     * Origins follow the pattern: auto.<category> or manual.<category>
+     * Examples: auto.db, auto.http.server, auto.cache, auto.view, manual.custom
+     *
+     * @param string $origin The span origin
+     */
+    public function setOrigin(string $origin): self
+    {
+        $this->origin = $origin;
+
+        return $this;
+    }
+
+    public function getOrigin(): ?string
+    {
+        return $this->origin;
+    }
+
     public function getServiceName(): string
     {
         return $this->serviceName;
@@ -398,7 +423,7 @@ class Span implements \JsonSerializable
      */
     public function jsonSerialize(bool $deduplicate = false): array
     {
-        // Core fields always present
+        // Core fields always present (OTEL-compatible)
         $data = [
             'span_id' => $this->getSpanId(),
             'name' => $this->name,
@@ -423,20 +448,38 @@ class Span implements \JsonSerializable
             $data['status_msg'] = $this->statusMessage;
         }
 
-        // Attributes - optionally deduplicate from trace-level request data
-        $attrs = $this->attributes;
-        if ($deduplicate) {
-            // Remove attributes that are already in trace.request
-            $duplicateKeys = [
+        // Build attributes - filter out null/empty values
+        $attrs = [];
+        foreach ($this->attributes as $key => $value) {
+            // Skip null values
+            if ($value === null) {
+                continue;
+            }
+            // Skip empty strings
+            if ($value === '') {
+                continue;
+            }
+            // Skip empty arrays
+            if (is_array($value) && empty($value)) {
+                continue;
+            }
+            
+            // When deduplicating, skip HTTP attributes that are in trace.request
+            if ($deduplicate && in_array($key, [
                 'http.url', 'http.method', 'http.target', 'http.host',
                 'http.scheme', 'http.user_agent', 'http.client_ip',
-            ];
-            foreach ($duplicateKeys as $key) {
-                unset($attrs[$key]);
+            ], true)) {
+                continue;
             }
+            
+            $attrs[$key] = $value;
         }
-        // Filter out null values from attributes
-        $attrs = array_filter($attrs, fn ($v) => $v !== null);
+        
+        // Add origin to attrs for storage (it's also a top-level field for compatibility)
+        if ($this->origin !== null) {
+            $attrs['origin'] = $this->origin;
+        }
+        
         if (!empty($attrs)) {
             $data['attrs'] = $attrs;
         }
@@ -449,6 +492,13 @@ class Span implements \JsonSerializable
                 if (isset($eventData['attrs']['exception.stacktrace'])) {
                     unset($eventData['attrs']['exception.stacktrace']);
                 }
+                // Filter null values from event attrs
+                if (isset($eventData['attrs'])) {
+                    $eventData['attrs'] = array_filter($eventData['attrs'], fn ($v) => $v !== null && $v !== '');
+                    if (empty($eventData['attrs'])) {
+                        unset($eventData['attrs']);
+                    }
+                }
 
                 return $eventData;
             }, $this->events);
@@ -459,10 +509,15 @@ class Span implements \JsonSerializable
             $data['links'] = array_map(fn ($l) => $l->jsonSerialize(), $this->links);
         }
 
-        // Resource - compact
+        // Resource - compact (service info)
         $data['svc'] = $this->serviceName;
-        if ($this->serviceVersion !== '0.0.0') {
+        if ($this->serviceVersion !== '0.0.0' && $this->serviceVersion !== '') {
             $data['svc_ver'] = $this->serviceVersion;
+        }
+
+        // Origin for categorization
+        if ($this->origin !== null) {
+            $data['origin'] = $this->origin;
         }
 
         // Fingerprint only if set

@@ -51,6 +51,8 @@ class LogEntry implements \JsonSerializable
     // Span linking
     private ?string $spanId;
 
+    private ?string $parentSpanId;
+
     private ?string $traceId;
 
     // Source location
@@ -78,6 +80,7 @@ class LogEntry implements \JsonSerializable
         $this->attributes = $attributes;
         $this->resource = [];
         $this->spanId = null;
+        $this->parentSpanId = null;
         $this->traceId = null;
         $this->sourceFile = null;
         $this->sourceLine = null;
@@ -135,6 +138,18 @@ class LogEntry implements \JsonSerializable
     public function getSpanId(): ?string
     {
         return $this->spanId;
+    }
+
+    public function setParentSpanId(?string $parentSpanId): self
+    {
+        $this->parentSpanId = $parentSpanId;
+
+        return $this;
+    }
+
+    public function getParentSpanId(): ?string
+    {
+        return $this->parentSpanId;
     }
 
     public function setTraceId(?string $traceId): self
@@ -253,6 +268,11 @@ class LogEntry implements \JsonSerializable
             $data['span_id'] = $this->spanId;
         }
 
+        // Only include parent_span_id if set
+        if ($this->parentSpanId !== null) {
+            $data['parent_span_id'] = $this->parentSpanId;
+        }
+
         // Only include source if meaningful
         if ($this->sourceFile !== null) {
             $src = ['file' => $this->sourceFile, 'line' => $this->sourceLine];
@@ -269,6 +289,10 @@ class LogEntry implements \JsonSerializable
 
         // Always include fingerprint for deduplication
         $data['fp'] = $this->getFingerprint();
+
+        // Calculate payload size (body + serialized attributes)
+        $attrSize = !empty($this->attributes) ? strlen(json_encode($this->attributes)) : 0;
+        $data['payload_size'] = strlen($this->body) + $attrSize;
 
         return $data;
     }

@@ -60,6 +60,7 @@ final class TracingStatement extends AbstractStatementMiddleware
     public function execute(): Result
     {
         $span = $this->tracing->startSpan($this->getSpanName(), Span::KIND_CLIENT);
+        $span->setOrigin('auto.db');
         $span->setAttributes($this->dbAttributes);
         $span->setAttribute('db.type', 'sql');
         $span->setAttribute('db.statement', $this->sql);

@@ -35,6 +35,9 @@ services:
             $captureCodeContext: '%stacktracer.capture_code_context%'
             $filterVendorFrames: '%stacktracer.filter_vendor_frames%'
             $captureRequestHeaders: '%stacktracer.capture_request_headers%'
+            $captureRequestBody: '%stacktracer.capture_request_body%'
+            $maxBodySize: '%stacktracer.max_body_size%'
+            $captureFiles: '%stacktracer.capture_files%'
             $sensitiveKeys: '%stacktracer.sensitive_keys%'
             $serviceName: '%stacktracer.service_name%'
             $serviceVersion: '%stacktracer.service_version%'
@@ -59,7 +62,16 @@ services:
         alias: Stacktracer\SymfonyBundle\Service\SpanManager
         public: true
 
-    # Monolog Handler
+    # Monolog Handler - captures logs and attaches them to traces
+    Stacktracer\SymfonyBundle\Monolog\Handler:
+        arguments:
+            $tracingService: '@Stacktracer\SymfonyBundle\Service\TracingService'
+            $level: '%stacktracer.logging.level%'
+            $bubble: true
+            $captureContext: '%stacktracer.logging.capture_context%'
+            $excludeChannels: '%stacktracer.logging.exclude_channels%'
+        public: true
+
     # Event subscribers
     Stacktracer\SymfonyBundle\EventSubscriber\RequestTracingSubscriber:
         arguments:
@@ -192,11 +204,11 @@ services:
         tags:
             - { name: twig.extension }
 
-    # Twig profiler subscriber (hooks into Twig's ProfilerExtension)
-    Stacktracer\SymfonyBundle\Tracing\Twig\ProfilerSubscriber:
+    # Twig tracing extension (Sentry-style enter/leave hooks)
+    # Creates spans for each template, block, and macro render
+    Stacktracer\SymfonyBundle\Tracing\Twig\TwigTracingExtension:
         arguments:
             $tracing: '@Stacktracer\SymfonyBundle\Service\TracingService'
-            $twig: '@?twig'
             $slowThreshold: '%stacktracer.integrations.twig.slow_threshold%'
         tags:
-            - { name: kernel.event_subscriber }
+            - { name: twig.extension }

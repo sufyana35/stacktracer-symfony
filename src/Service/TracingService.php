@@ -65,6 +65,12 @@ class TracingService
 
     private bool $captureRequestHeaders;
 
+    private bool $captureRequestBody;
+
+    private int $maxBodySize;
+
+    private bool $captureFiles;
+
     private array $sensitiveKeys;
 
     private ?string $projectDir = null;
@@ -88,11 +94,11 @@ class TracingService
     /** @var string[] Transaction/route names to ignore */
     private array $ignoredTransactions = [];
 
-    /** @var callable|null */
-    private $beforeSend;
+    /** @var callable[] Array of before-send callbacks */
+    private array $beforeSendCallbacks = [];
 
-    /** @var callable|null */
-    private $beforeSendTransaction;
+    /** @var callable[] Array of before-send-transaction callbacks */
+    private array $beforeSendTransactionCallbacks = [];
 
     private ?string $environment = null;
 
@@ -131,6 +137,9 @@ class TracingService
         bool $captureCodeContext = true,
         bool $filterVendorFrames = true,
         bool $captureRequestHeaders = true,
+        bool $captureRequestBody = true,
+        int $maxBodySize = 10240,
+        bool $captureFiles = true,
         array $sensitiveKeys = ['password', 'token', 'secret', 'api_key', 'authorization', 'cookie'],
         string $serviceName = 'unknown',
         string $serviceVersion = '0.0.0',
@@ -148,6 +157,9 @@ class TracingService
         $this->captureCodeContext = $captureCodeContext;
         $this->filterVendorFrames = $filterVendorFrames;
         $this->captureRequestHeaders = $captureRequestHeaders;
+        $this->captureRequestBody = $captureRequestBody;
+        $this->maxBodySize = $maxBodySize;
+        $this->captureFiles = $captureFiles;
         $this->sensitiveKeys = array_map('strtolower', $sensitiveKeys);
         $this->serviceName = $serviceName;
         $this->serviceVersion = $serviceVersion;
@@ -349,6 +361,21 @@ class TracingService
         return $this->captureRequestHeaders;
     }
 
+    public function shouldCaptureRequestBody(): bool
+    {
+        return $this->captureRequestBody;
+    }
+
+    public function getMaxBodySize(): int
+    {
+        return $this->maxBodySize;
+    }
+
+    public function shouldCaptureFiles(): bool
+    {
+        return $this->captureFiles;
+    }
+
     public function redactSensitiveData(array $data): array
     {
         $redacted = [];
@@ -532,12 +559,14 @@ class TracingService
         }
 
         // Compute exception fingerprint for deduplication
-        $exceptionData['fp'] = Fingerprint::exception($exception);
-        $exceptionData['gk'] = Fingerprint::exceptionGroup($exception);
+        $fingerprint = Fingerprint::exception($exception);
+        $groupKey = Fingerprint::exceptionGroup($exception);
+        $exceptionData['fp'] = $fingerprint;
+        $exceptionData['gk'] = $groupKey;
 
         $trace->setException($exceptionData);
-        $trace->setFingerprint($exceptionData['fp']);
-        $trace->setGroupKey($exceptionData['gk']);
+        $trace->setFingerprint(is_array($fingerprint) ? implode(':', $fingerprint) : $fingerprint);
+        $trace->setGroupKey(is_array($groupKey) ? implode(':', $groupKey) : $groupKey);
 
         // Sync trace ID with span manager
         if ($this->spanManager->getCurrentTraceId()) {
@@ -584,14 +613,173 @@ class TracingService
             // Attach exception data to the current request trace
             $this->currentTrace->setException($exceptionData);
             $this->currentTrace->setLevel(Trace::LEVEL_ERROR);
-            $this->currentTrace->setFingerprint($exceptionData['fp']);
-            $this->currentTrace->setGroupKey($exceptionData['gk']);
+            $this->currentTrace->setFingerprint(is_array($exceptionData['fp']) ? implode(':', $exceptionData['fp']) : $exceptionData['fp']);
+            $this->currentTrace->setGroupKey(is_array($exceptionData['gk']) ? implode(':', $exceptionData['gk']) : $exceptionData['gk']);
 
             // Don't send - will be sent with endTrace()
             return $trace;
         }
 
         // Only send standalone exception trace if no request trace is active
+        if ($this->enabled) {
+            $this->attachPackagesToTrace($trace);
+            $this->transport->send($trace);
+        }
+
+        return $trace;
+    }
+
+    /**
+     * Notify Stacktracer of an exception with an optional per-event callback.
+     *
+     * Similar to Bugsnag's notifyException() - allows modifying the trace
+     * before it's sent via a callback.
+     *
+     * @param \Throwable    $exception The exception to report
+     * @param callable|null $modifier  Optional callback to modify the trace before sending
+     * @param array         $context   Additional context data
+     *
+     * @return Trace The captured trace
+     *
+     * @example
+     * ```php
+     * $stacktracer->notifyException($exception, function (Trace $trace) {
+     *     $trace->setContext('diagnostics', [
+     *         'error' => 'RuntimeException',
+     *         'state' => 'Caught',
+     *     ]);
+     *     return $trace;
+     * });
+     * ```
+     */
+    public function notifyException(\Throwable $exception, ?callable $modifier = null, array $context = []): Trace
+    {
+        $trace = $this->captureException($exception, $context);
+
+        if ($modifier !== null) {
+            $modifiedTrace = $modifier($trace);
+            if ($modifiedTrace instanceof Trace) {
+                $trace = $modifiedTrace;
+            }
+        }
+
+        return $trace;
+    }
+
+    /**
+     * Notify Stacktracer of an error without an exception object.
+     *
+     * Similar to Bugsnag's notifyError() - useful for reporting handled errors
+     * or non-exception error conditions.
+     *
+     * @param string        $name     The error name/type
+     * @param string        $message  The error message
+     * @param string        $level    The severity level (default: error)
+     * @param array         $context  Additional context data
+     * @param callable|null $modifier Optional callback to modify the trace before sending
+     *
+     * @return Trace The captured trace
+     *
+     * @example
+     * ```php
+     * $stacktracer->notifyError('PaymentFailed', 'Card declined', Trace::LEVEL_ERROR, [
+     *     'card_type' => 'visa',
+     *     'amount' => 99.99,
+     * ]);
+     * ```
+     */
+    public function notifyError(
+        string $name,
+        string $message,
+        string $level = Trace::LEVEL_ERROR,
+        array $context = [],
+        ?callable $modifier = null
+    ): Trace {
+        $trace = new Trace(
+            Trace::TYPE_EXCEPTION,
+            $level,
+            $message,
+            array_merge($this->globalContext, $context)
+        );
+
+        foreach ($this->globalTags as $key => $value) {
+            $trace->addTag($key, $value);
+        }
+
+        // Attach feature flags
+        if (!empty($this->featureFlags)) {
+            $trace->setFeatureFlags($this->featureFlags);
+        }
+
+        // Attach user context
+        if ($this->globalUser !== null) {
+            $trace->setUser($this->globalUser);
+        }
+
+        // Attach release and environment
+        if ($this->release !== null) {
+            $trace->setRelease($this->release);
+        }
+        if ($this->environment !== null) {
+            $trace->setEnvironment($this->environment);
+        }
+
+        // Attach server info
+        $trace->setServer($this->getServer());
+
+        // Build a synthetic stack trace from current location
+        $stackTrace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, $this->maxStackFrames);
+        $stackFrames = [];
+        foreach ($stackTrace as $frame) {
+            $file = $frame['file'] ?? '[internal]';
+            $stackFrames[] = new StackFrame(
+                $file,
+                $frame['line'] ?? 0,
+                $frame['function'] ?? null,
+                $frame['class'] ?? null,
+                $frame['type'] ?? null,
+                str_contains($file, '/vendor/')
+            );
+        }
+
+        $stackFingerprint = StackFrame::computeStackFingerprint($stackFrames);
+
+        // Create exception-like data structure
+        $exceptionData = [
+            'cls' => $name,
+            'msg' => $message,
+            'code' => 0,
+            'file' => $stackFrames[0]->getFile() ?? '[unknown]',
+            'line' => $stackFrames[0]->getLine() ?? 0,
+            'trace' => array_map(fn ($f) => $f->jsonSerialize(), $stackFrames),
+            'stack_fp' => $stackFingerprint,
+        ];
+
+        // Compute fingerprint
+        $exceptionData['fp'] = Fingerprint::composite([$name, $message, $stackFingerprint]);
+        $exceptionData['gk'] = Fingerprint::hash($name);
+
+        $trace->setException($exceptionData);
+        $trace->setFingerprint($exceptionData['fp']);
+        $trace->setGroupKey($exceptionData['gk']);
+
+        // Sync trace ID with span manager
+        if ($this->spanManager->getCurrentTraceId()) {
+            $trace->setTraceId($this->spanManager->getCurrentTraceId());
+        }
+        if ($this->spanManager->getCurrentSpanId()) {
+            $trace->setSpanId($this->spanManager->getCurrentSpanId());
+        }
+
+        // Apply modifier if provided
+        if ($modifier !== null) {
+            $modifiedTrace = $modifier($trace);
+            if ($modifiedTrace instanceof Trace) {
+                $trace = $modifiedTrace;
+            }
+        }
+
+        // Send the trace
         if ($this->enabled) {
             $this->attachPackagesToTrace($trace);
             $this->transport->send($trace);
@@ -1005,51 +1193,116 @@ class TracingService
     // ========================================
 
     /**
+     * Register a callback to filter/modify events before sending.
+     *
+     * Multiple callbacks can be registered and will be executed in order.
+     * If any callback returns null, the trace will be dropped.
+     *
+     * @param callable $callback Callback that receives Trace, returns Trace or null to drop
+     *
+     * @example
+     * ```php
+     * // Add metadata from your application
+     * $stacktracer->registerCallback(function (Trace $trace) {
+     *     $trace->setContext('team', 'backend');
+     *     return $trace;
+     * });
+     *
+     * // Drop traces for certain routes
+     * $stacktracer->registerCallback(function (Trace $trace) {
+     *     if (str_starts_with($trace->getRequest()['path'] ?? '', '/health')) {
+     *         return null; // Drop health check traces
+     *     }
+     *     return $trace;
+     * });
+     * ```
+     */
+    public function registerCallback(callable $callback): void
+    {
+        $this->beforeSendCallbacks[] = $callback;
+    }
+
+    /**
      * Set callback to filter/modify events before sending.
      *
      * @param callable|null $callback Callback that receives Trace, returns Trace or null to drop
+     *
+     * @deprecated Use registerCallback() instead for multiple callbacks support
      */
     public function setBeforeSend(?callable $callback): void
     {
-        $this->beforeSend = $callback;
+        if ($callback === null) {
+            $this->beforeSendCallbacks = [];
+        } else {
+            $this->beforeSendCallbacks = [$callback];
+        }
+    }
+
+    /**
+     * Register a callback for transaction traces.
+     *
+     * @param callable $callback Callback that receives Trace, returns Trace or null to drop
+     */
+    public function registerTransactionCallback(callable $callback): void
+    {
+        $this->beforeSendTransactionCallbacks[] = $callback;
     }
 
     /**
      * Set callback to filter/modify transactions before sending.
      *
      * @param callable|null $callback Callback that receives Trace, returns Trace or null to drop
+     *
+     * @deprecated Use registerTransactionCallback() instead
      */
     public function setBeforeSendTransaction(?callable $callback): void
     {
-        $this->beforeSendTransaction = $callback;
+        if ($callback === null) {
+            $this->beforeSendTransactionCallbacks = [];
+        } else {
+            $this->beforeSendTransactionCallbacks = [$callback];
+        }
     }
 
     /**
-     * Apply before_send callback to a trace.
+     * Apply all before_send callbacks to a trace.
+     *
+     * Callbacks are executed in registration order. If any returns null,
+     * the trace is dropped and no further callbacks are executed.
+     *
+     * @param Trace $trace The trace to process
      *
      * @return Trace|null Returns modified trace or null to drop
      */
     public function applyBeforeSend(Trace $trace): ?Trace
     {
-        if ($this->beforeSend === null) {
-            return $trace;
+        foreach ($this->beforeSendCallbacks as $callback) {
+            $trace = $callback($trace);
+            if ($trace === null) {
+                return null;
+            }
         }
 
-        return ($this->beforeSend)($trace);
+        return $trace;
     }
 
     /**
-     * Apply before_send_transaction callback to a trace.
+     * Apply all before_send_transaction callbacks to a trace.
+     *
+     * @param Trace $trace The trace to process
      *
      * @return Trace|null Returns modified trace or null to drop
      */
     public function applyBeforeSendTransaction(Trace $trace): ?Trace
     {
-        if ($this->beforeSendTransaction === null) {
-            return $trace;
+        foreach ($this->beforeSendTransactionCallbacks as $callback) {
+            $trace = $callback($trace);
+            if ($trace === null) {
+                return null;
+            }
         }
 
-        return ($this->beforeSendTransaction)($trace);
+        return $trace;
     }
 
     // ========================================

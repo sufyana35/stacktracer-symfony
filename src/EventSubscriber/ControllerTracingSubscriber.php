@@ -6,6 +6,7 @@ namespace Stacktracer\SymfonyBundle\EventSubscriber;
 
 use Stacktracer\SymfonyBundle\Model\Span;
 use Stacktracer\SymfonyBundle\Service\TracingService;
+use Stacktracer\SymfonyBundle\Util\ControllerResolver;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\HttpKernel\Event\ControllerEvent;
 use Symfony\Component\HttpKernel\Event\ResponseEvent;
@@ -32,6 +33,7 @@ final class ControllerTracingSubscriber implements EventSubscriberInterface
     private TracingService $tracing;
     private bool $enabled;
     private ?Span $controllerSpan = null;
+    private ?Span $initSpan = null;
 
     public function __construct(TracingService $tracing, bool $enabled = true)
     {
@@ -58,24 +60,51 @@ final class ControllerTracingSubscriber implements EventSubscriberInterface
         }
 
         $controller = $event->getController();
-        $controllerName = $this->getControllerName($controller);
+        $controllerName = ControllerResolver::getName($controller);
         
         if ($controllerName === null) {
             return;
+        }
+
+        // Create an initialization span covering time from request start to now
+        // This captures routing, firewall, security, and other Symfony overhead
+        $request = $event->getRequest();
+        $requestStartTime = $request->server->get('REQUEST_TIME_FLOAT');
+        
+        if ($requestStartTime) {
+            $currentTime = microtime(true);
+            $initDurationMs = ($currentTime - $requestStartTime) * 1000;
+            
+            // Only create init span if there's meaningful initialization time (> 1ms)
+            if ($initDurationMs > 1) {
+                $this->initSpan = $this->tracing->startSpan(
+                    'symfony.kernel.init',
+                    Span::KIND_INTERNAL
+                );
+                $this->initSpan->setOrigin('auto.http.server');
+                $this->initSpan->setAttributes([
+                    'symfony.init_duration_ms' => round($initDurationMs, 2),
+                    'symfony.route' => $request->attributes->get('_route') ?? 'unknown',
+                    'symfony.phase' => 'routing, security, firewall',
+                ]);
+                // Backdate the start time and immediately end
+                $this->initSpan->setStartTime($requestStartTime);
+                $this->initSpan->end($currentTime);
+            }
         }
 
         $this->controllerSpan = $this->tracing->startSpan(
             sprintf('controller %s', $controllerName),
             Span::KIND_INTERNAL
         );
+        $this->controllerSpan->setOrigin('auto.http.server');
 
         $this->controllerSpan->setAttributes([
             'code.function' => $controllerName,
-            'code.namespace' => $this->getControllerNamespace($controller),
+            'code.namespace' => ControllerResolver::getNamespace($controller),
         ]);
 
         // Add route info if available
-        $request = $event->getRequest();
         $route = $request->attributes->get('_route');
         if ($route) {
             $this->controllerSpan->setAttribute('http.route', $route);
@@ -110,60 +139,5 @@ final class ControllerTracingSubscriber implements EventSubscriberInterface
         $this->controllerSpan->setAttribute('exception.type', get_class($exception));
         $this->tracing->endSpan($this->controllerSpan);
         $this->controllerSpan = null;
-    }
-
-    /**
-     * Extract controller name from the controller callable.
-     */
-    private function getControllerName(mixed $controller): ?string
-    {
-        if (is_array($controller)) {
-            // [ControllerClass, 'methodName']
-            $class = is_object($controller[0]) ? get_class($controller[0]) : $controller[0];
-            $method = $controller[1];
-            
-            // Get short class name
-            $shortClass = substr(strrchr($class, '\\') ?: $class, 1) ?: $class;
-            
-            return sprintf('%s::%s', $shortClass, $method);
-        }
-
-        if (is_object($controller) && method_exists($controller, '__invoke')) {
-            $class = get_class($controller);
-            $shortClass = substr(strrchr($class, '\\') ?: $class, 1) ?: $class;
-            return sprintf('%s::__invoke', $shortClass);
-        }
-
-        if (is_string($controller)) {
-            // 'Controller::method' format
-            if (str_contains($controller, '::')) {
-                $parts = explode('::', $controller);
-                $shortClass = substr(strrchr($parts[0], '\\') ?: $parts[0], 1) ?: $parts[0];
-                return sprintf('%s::%s', $shortClass, $parts[1]);
-            }
-            return $controller;
-        }
-
-        return null;
-    }
-
-    /**
-     * Get the controller's namespace.
-     */
-    private function getControllerNamespace(mixed $controller): ?string
-    {
-        if (is_array($controller) && isset($controller[0])) {
-            $class = is_object($controller[0]) ? get_class($controller[0]) : $controller[0];
-            $pos = strrpos($class, '\\');
-            return $pos !== false ? substr($class, 0, $pos) : null;
-        }
-
-        if (is_object($controller)) {
-            $class = get_class($controller);
-            $pos = strrpos($class, '\\');
-            return $pos !== false ? substr($class, 0, $pos) : null;
-        }
-
-        return null;
     }
 }

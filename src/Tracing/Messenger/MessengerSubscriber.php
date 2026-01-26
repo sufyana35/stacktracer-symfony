@@ -71,6 +71,7 @@ final class MessengerSubscriber implements EventSubscriberInterface
         $messageName = $this->getShortClassName($messageClass);
 
         $span = $this->tracing->startSpan(sprintf('%s publish', $messageName), 'messaging');
+        $span->setOrigin('auto.messaging');
 
         // OTEL messaging.* semantic conventions
         $span->setAttribute('messaging.operation.type', 'publish');
@@ -113,6 +114,7 @@ final class MessengerSubscriber implements EventSubscriberInterface
         $spanKey = spl_object_id($envelope) . ':' . $receiptHandle;
 
         $span = $this->tracing->startSpan(sprintf('%s process', $messageName), 'messaging');
+        $span->setOrigin('auto.messaging');
 
         // OTEL messaging.* semantic conventions
         $span->setAttribute('messaging.operation.type', 'process');

@@ -115,6 +115,7 @@ final class FormSubscriber implements EventSubscriberInterface
         // Create a span for form processing if spans are enabled
         if (!$isValid && !empty($errors)) {
             $span = $this->tracing->startSpan(sprintf('form.%s', $formName), 'form');
+            $span->setOrigin('auto.form');
             $span->setAttribute('form.name', $formName);
             $span->setAttribute('form.type', $this->getFormTypeName($form));
             $span->setAttribute('form.valid', false);

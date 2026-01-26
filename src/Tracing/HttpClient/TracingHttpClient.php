@@ -48,6 +48,7 @@ final class TracingHttpClient implements HttpClientInterface
         $path = $parsedUrl['path'] ?? '/';
 
         $span = $this->tracing->startSpan(sprintf('%s %s', $method, $host), 'http');
+        $span->setOrigin('auto.http.client');
 
         // Set OTEL http.* semantic attributes
         $span->setAttribute('http.request.method', $method);

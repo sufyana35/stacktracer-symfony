@@ -82,6 +82,7 @@ final class TracingConnection extends AbstractConnectionMiddleware
         ++$this->queryCount;
 
         $span = $this->tracing->startSpan($this->getSpanName($sql), Span::KIND_CLIENT);
+        $span->setOrigin('auto.db');
         $span->setAttributes($this->buildDbAttributes());
         $span->setAttribute('db.type', 'sql');
         $span->setAttribute('db.statement', $sql);

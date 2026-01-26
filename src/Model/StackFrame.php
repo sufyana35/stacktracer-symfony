@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace Stacktracer\SymfonyBundle\Model;
 
+use Stacktracer\SymfonyBundle\Util\PathUtils;
+
 /**
  * StackFrame - represents a single frame in a stack trace with fingerprinting.
+ *
+ * @author Stacktracer <hello@stacktracer.io>
  */
 class StackFrame implements \JsonSerializable
 {
@@ -69,6 +73,12 @@ class StackFrame implements \JsonSerializable
 
     /**
      * Create from exception trace.
+     *
+     * @param \Throwable $exception    The exception to extract frames from
+     * @param bool       $filterVendor Whether to filter vendor frames
+     * @param int        $maxFrames    Maximum number of frames
+     *
+     * @return self[] Array of StackFrame objects
      */
     public static function fromException(\Throwable $exception, bool $filterVendor = true, int $maxFrames = 50): array
     {
@@ -82,7 +92,7 @@ class StackFrame implements \JsonSerializable
             null,
             get_class($exception),
             '::',
-            self::isVendorPath($exception->getFile())
+            PathUtils::isVendor($exception->getFile())
         );
 
         $count = 0;
@@ -92,7 +102,7 @@ class StackFrame implements \JsonSerializable
             }
 
             $file = $frame['file'] ?? '[internal]';
-            $isVendor = self::isVendorPath($file);
+            $isVendor = PathUtils::isVendor($file);
 
             $frames[] = new self(
                 $file,
@@ -109,20 +119,17 @@ class StackFrame implements \JsonSerializable
         return $frames;
     }
 
-    private static function isVendorPath(string $file): bool
-    {
-        return str_contains($file, '/vendor/') || str_contains($file, '\\vendor\\');
-    }
-
     /**
      * Compute a fingerprint for this frame (location-based).
      * Uses xxh3 for speed and low collision rate.
+     *
+     * @return string The fingerprint hash
      */
     private function computeFingerprint(): string
     {
         // Normalize the fingerprint components
         $normalized = implode(':', [
-            $this->normalizeFilePath($this->file),
+            PathUtils::normalize($this->file),
             $this->line,
             $this->class ?? '',
             $this->function ?? '',
@@ -133,28 +140,22 @@ class StackFrame implements \JsonSerializable
 
     /**
      * Hash the file path for grouping.
+     *
+     * @return string The file hash
      */
     private function computeFileHash(): string
     {
-        return hash('xxh3', $this->normalizeFilePath($this->file));
-    }
-
-    /**
-     * Normalize file path for consistent fingerprinting.
-     */
-    private function normalizeFilePath(string $path): string
-    {
-        // Remove project-specific prefix
-        if (preg_match('#/(?:src|app|vendor)/.*$#', $path, $matches)) {
-            return $matches[0];
-        }
-
-        return basename($path);
+        return hash('xxh3', PathUtils::normalize($this->file));
     }
 
     /**
      * Compute a fingerprint for an entire stack trace.
      * This is used for grouping similar errors.
+     *
+     * @param self[] $frames    Array of StackFrame objects
+     * @param int    $maxFrames Maximum frames to include
+     *
+     * @return string The stack fingerprint hash
      */
     public static function computeStackFingerprint(array $frames, int $maxFrames = 10): string
     {

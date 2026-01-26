@@ -93,6 +93,7 @@ final class ConsoleTracingSubscriber implements EventSubscriberInterface
         $trace->addTag('trace.type', 'cli');
 
         $this->activeSpan = $this->tracing->startSpan(sprintf('CMD %s', $commandName), 'cli');
+        $this->activeSpan->setOrigin('auto.console');
 
         // OTEL cli.* semantic conventions
         $this->activeSpan->setAttribute('cli.command', $commandName);

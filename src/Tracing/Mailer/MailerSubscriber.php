@@ -110,6 +110,7 @@ final class MailerSubscriber implements EventSubscriberInterface
 
         // Create a span for the email send
         $span = $this->tracing->startSpan('mail.send', 'mail');
+        $span->setOrigin('auto.mail');
         $span->setAttributes($data);
         $span->setStatus('ok');
         $this->tracing->endSpan($span);
@@ -155,6 +156,7 @@ final class MailerSubscriber implements EventSubscriberInterface
 
         // Create a span for the failed email
         $span = $this->tracing->startSpan('mail.send', 'mail');
+        $span->setOrigin('auto.mail');
         $span->setAttributes($data);
         $span->setStatus('error');
         $span->setAttribute('error.type', get_class($error));

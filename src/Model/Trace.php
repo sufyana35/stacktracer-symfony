@@ -158,6 +158,16 @@ class Trace implements \JsonSerializable
         return $this->timestamp;
     }
 
+    /**
+     * Override the timestamp for traces that need backdating.
+     * Useful for aligning trace start with actual PHP request start.
+     */
+    public function setTimestamp(float $timestamp): self
+    {
+        $this->timestamp = $timestamp;
+        return $this;
+    }
+
     public function getDuration(): ?float
     {
         return $this->duration;

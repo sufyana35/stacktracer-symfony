@@ -119,6 +119,22 @@ final class HttpTransport implements TransportInterface
 
     private function sendToApi(array $batch): bool
     {
+        // Extract fingerprints for quick duplicate detection on server
+        $fingerprints = [];
+        $groupKeys = [];
+        $exceptionFps = [];
+        foreach ($batch as $trace) {
+            if (!empty($trace['fp'])) {
+                $fingerprints[] = $trace['fp'];
+            }
+            if (!empty($trace['gk'])) {
+                $groupKeys[] = $trace['gk'];
+            }
+            if (!empty($trace['exception']['fp'])) {
+                $exceptionFps[] = $trace['exception']['fp'];
+            }
+        }
+
         $payload = [
             'traces' => $batch,
             'meta' => [
@@ -136,6 +152,17 @@ final class HttpTransport implements TransportInterface
             'X-Trace-Count: ' . count($batch),
             'User-Agent: Stacktracer-Symfony/' . StacktracerBundle::SDK_VERSION,
         ];
+
+        // Add fingerprint headers for quick deduplication (comma-separated)
+        if (!empty($fingerprints)) {
+            $headers[] = 'X-Trace-Fingerprints: ' . implode(',', array_unique($fingerprints));
+        }
+        if (!empty($groupKeys)) {
+            $headers[] = 'X-Trace-Groups: ' . implode(',', array_unique($groupKeys));
+        }
+        if (!empty($exceptionFps)) {
+            $headers[] = 'X-Exception-Fingerprints: ' . implode(',', array_unique($exceptionFps));
+        }
 
         if ($this->compress && strlen($body) > 1024) {
             $compressed = gzencode($body, 6);

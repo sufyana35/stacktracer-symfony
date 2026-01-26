@@ -6,7 +6,7 @@ namespace Stacktracer\SymfonyBundle\EventSubscriber;
 
 use Stacktracer\SymfonyBundle\Model\Breadcrumb;
 use Stacktracer\SymfonyBundle\Service\TracingService;
-use Symfony\Component\ErrorHandler\Error\OutOfMemoryError;
+use Stacktracer\SymfonyBundle\Util\OomHandler;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\HttpKernel\Event\ExceptionEvent;
 use Symfony\Component\HttpKernel\KernelEvents;
@@ -32,15 +32,10 @@ final class ExceptionTracingSubscriber implements EventSubscriberInterface
      */
     private int $oomMemoryIncrease;
 
-    /**
-     * Regex pattern to detect OOM error messages.
-     */
-    private const OOM_REGEX = '/Allowed memory size of (\d+) bytes exhausted/';
-
-    public function __construct(TracingService $tracing, int $oomMemoryIncrease = 5242880)
+    public function __construct(TracingService $tracing, int $oomMemoryIncrease = OomHandler::DEFAULT_MEMORY_INCREASE)
     {
         $this->tracing = $tracing;
-        $this->oomMemoryIncrease = $oomMemoryIncrease; // Default 5MB
+        $this->oomMemoryIncrease = $oomMemoryIncrease;
     }
 
     public static function getSubscribedEvents(): array
@@ -64,8 +59,8 @@ final class ExceptionTracingSubscriber implements EventSubscriberInterface
         }
 
         // Handle OOM errors specially - increase memory limit to allow reporting
-        if ($this->isOutOfMemoryError($exception)) {
-            $this->handleOutOfMemory($exception);
+        if (OomHandler::isOom($exception)) {
+            OomHandler::handle($exception, $this->oomMemoryIncrease);
         }
 
         $request = $event->getRequest();
@@ -74,94 +69,42 @@ final class ExceptionTracingSubscriber implements EventSubscriberInterface
         $this->tracing->addBreadcrumb('exception', 'Exception thrown', [
             'class' => get_class($exception),
             'message' => $exception->getMessage(),
-            'file' => $exception->getFile(),
-            'line' => $exception->getLine(),
         ], Breadcrumb::LEVEL_ERROR);
 
         // Capture the exception with full context
         $trace = $this->tracing->captureException($exception, [
-            'request_uri' => $request->getUri(),
             'route' => $request->attributes->get('_route'),
         ]);
 
-        $trace->setRequest([
+        // Set request data (consolidated in request object, not duplicated in tags)
+        $requestData = [
             'method' => $request->getMethod(),
             'url' => $request->getUri(),
             'path' => $request->getPathInfo(),
-            'query_string' => $request->getQueryString(),
             'ip' => $request->getClientIp(),
-            'user_agent' => $request->headers->get('User-Agent'),
-        ]);
-
-        // Add exception-specific tags
-        $trace->addTag('exception.type', get_class($exception));
-        $trace->addTag('exception.handled', 'no');
-        $trace->addTag('exception.mechanism', 'symfony.exception_subscriber');
-        $trace->addTag('level', 'error');
-        
-        // HTTP status from exception if available
-        if (method_exists($exception, 'getStatusCode')) {
-            $trace->addTag('http.status_code', (string) $exception->getStatusCode());
+            'ua' => $request->headers->get('User-Agent'),
+            'host' => $request->getHost(),
+            'scheme' => $request->getScheme(),
+        ];
+        if ($request->getQueryString()) {
+            $requestData['qs'] = $request->getQueryString();
         }
-        
-        // Add error file info as tags
-        $trace->addTag('exception.file', basename($exception->getFile()));
-        $trace->addTag('exception.line', (string) $exception->getLine());
+        if ($route = $request->attributes->get('_route')) {
+            $requestData['route'] = $route;
+        }
+        $trace->setRequest($requestData);
+
+        // Minimal tags for filtering only
+        if (method_exists($exception, 'getStatusCode')) {
+            $trace->addTag('http.status_class', '5xx');
+        }
 
         // Record exception in current span ONLY if not already recorded
         // (SpanManager::withSpan already records exceptions when they bubble up)
         $currentSpan = $this->tracing->getCurrentSpan();
         if ($currentSpan && !$this->tracing->isExceptionRecorded($exception)) {
-            $currentSpan->recordException($exception, [
-                'http.url' => $request->getUri(),
-                'http.route' => $request->attributes->get('_route'),
-            ]);
+            $currentSpan->recordException($exception);
             $this->tracing->markExceptionRecorded($exception, $currentSpan->getSpanId());
-        }
-    }
-
-    /**
-     * Check if the throwable is an Out of Memory error.
-     *
-     * Handles both Symfony 4.4+ OutOfMemoryError and legacy OutOfMemoryException,
-     * as well as detecting OOM from the error message pattern.
-     */
-    private function isOutOfMemoryError(\Throwable $throwable): bool
-    {
-        // Symfony 4.4+ uses OutOfMemoryError
-        if ($throwable instanceof OutOfMemoryError) {
-            return true;
-        }
-
-        // Legacy Symfony 2.x/3.x used OutOfMemoryException (check by class name for BC)
-        if (str_contains(get_class($throwable), 'OutOfMemory')) {
-            return true;
-        }
-
-        // Also detect by message pattern in case it's wrapped
-        return preg_match(self::OOM_REGEX, $throwable->getMessage()) === 1;
-    }
-
-    /**
-     * Handle Out of Memory errors by temporarily increasing memory limit.
-     *
-     * This allows error reporting to complete before the process terminates.
-     * The memory increase is intentionally small (default 5MB) - just enough
-     * to serialize and send the error report.
-     */
-    private function handleOutOfMemory(\Throwable $throwable): void
-    {
-        if ($this->oomMemoryIncrease <= 0) {
-            return;
-        }
-
-        // Extract current memory limit from error message
-        if (preg_match(self::OOM_REGEX, $throwable->getMessage(), $matches)) {
-            $currentLimit = (int) $matches[1];
-            $newLimit = $currentLimit + $this->oomMemoryIncrease;
-
-            // Temporarily increase memory limit
-            @ini_set('memory_limit', (string) $newLimit);
         }
     }
 }

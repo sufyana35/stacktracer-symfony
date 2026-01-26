@@ -40,7 +40,8 @@ final class TracingCachePool implements CacheItemPoolInterface
 
     public function getItem(string $key): CacheItemInterface
     {
-        $span = $this->tracing->startSpan(sprintf('CACHE GET %s', $this->poolName), 'cache');
+        $span = $this->tracing->startSpan(sprintf('cache.get %s', $key), 'cache');
+        $span->setOrigin('auto.cache');
         $span->setAttribute('cache.system', $this->poolName);
         $span->setAttribute('cache.operation', 'get');
         $span->setAttribute('cache.key', $this->sanitizeKey($key));
@@ -56,9 +57,16 @@ final class TracingCachePool implements CacheItemPoolInterface
             if ($item->isHit()) {
                 ++$this->hits;
                 $span->setAttribute('cache.hit', true);
+                // Add item size like Sentry does
+                $span->setAttribute('cache.item_size', $this->getCacheItemSize($item->get()));
             } else {
                 ++$this->misses;
                 $span->setAttribute('cache.hit', false);
+            }
+
+            // Add namespace if available
+            if ($this->poolName !== 'cache') {
+                $span->setAttribute('cache.namespace', $this->poolName);
             }
 
             $span->setStatus('ok');
@@ -84,10 +92,14 @@ final class TracingCachePool implements CacheItemPoolInterface
      */
     public function getItems(array $keys = []): iterable
     {
-        $span = $this->tracing->startSpan(sprintf('CACHE MGET %s', $this->poolName), 'cache');
+        $span = $this->tracing->startSpan(sprintf('cache.mget %s', $this->poolName), 'cache');
+        $span->setOrigin('auto.cache');
         $span->setAttribute('cache.system', $this->poolName);
         $span->setAttribute('cache.operation', 'mget');
         $span->setAttribute('cache.keys_count', count($keys));
+        if ($this->poolName !== 'cache') {
+            $span->setAttribute('cache.namespace', $this->poolName);
+        }
 
         $startTime = microtime(true);
 
@@ -131,10 +143,14 @@ final class TracingCachePool implements CacheItemPoolInterface
 
     public function hasItem(string $key): bool
     {
-        $span = $this->tracing->startSpan(sprintf('CACHE HAS %s', $this->poolName), 'cache');
+        $span = $this->tracing->startSpan(sprintf('cache.has %s', $key), 'cache');
+        $span->setOrigin('auto.cache');
         $span->setAttribute('cache.system', $this->poolName);
         $span->setAttribute('cache.operation', 'has');
         $span->setAttribute('cache.key', $this->sanitizeKey($key));
+        if ($this->poolName !== 'cache') {
+            $span->setAttribute('cache.namespace', $this->poolName);
+        }
 
         try {
             $result = $this->pool->hasItem($key);
@@ -155,9 +171,13 @@ final class TracingCachePool implements CacheItemPoolInterface
 
     public function clear(): bool
     {
-        $span = $this->tracing->startSpan(sprintf('CACHE CLEAR %s', $this->poolName), 'cache');
+        $span = $this->tracing->startSpan(sprintf('cache.clear %s', $this->poolName), 'cache');
+        $span->setOrigin('auto.cache');
         $span->setAttribute('cache.system', $this->poolName);
         $span->setAttribute('cache.operation', 'clear');
+        if ($this->poolName !== 'cache') {
+            $span->setAttribute('cache.namespace', $this->poolName);
+        }
 
         try {
             $result = $this->pool->clear();
@@ -182,10 +202,14 @@ final class TracingCachePool implements CacheItemPoolInterface
 
     public function deleteItem(string $key): bool
     {
-        $span = $this->tracing->startSpan(sprintf('CACHE DEL %s', $this->poolName), 'cache');
+        $span = $this->tracing->startSpan(sprintf('cache.delete %s', $key), 'cache');
+        $span->setOrigin('auto.cache');
         $span->setAttribute('cache.system', $this->poolName);
         $span->setAttribute('cache.operation', 'delete');
         $span->setAttribute('cache.key', $this->sanitizeKey($key));
+        if ($this->poolName !== 'cache') {
+            $span->setAttribute('cache.namespace', $this->poolName);
+        }
 
         try {
             $result = $this->pool->deleteItem($key);
@@ -209,10 +233,14 @@ final class TracingCachePool implements CacheItemPoolInterface
      */
     public function deleteItems(array $keys): bool
     {
-        $span = $this->tracing->startSpan(sprintf('CACHE MDEL %s', $this->poolName), 'cache');
+        $span = $this->tracing->startSpan(sprintf('cache.mdelete %s', $this->poolName), 'cache');
+        $span->setOrigin('auto.cache');
         $span->setAttribute('cache.system', $this->poolName);
         $span->setAttribute('cache.operation', 'mdelete');
         $span->setAttribute('cache.keys_count', count($keys));
+        if ($this->poolName !== 'cache') {
+            $span->setAttribute('cache.namespace', $this->poolName);
+        }
 
         try {
             $result = $this->pool->deleteItems($keys);
@@ -233,10 +261,16 @@ final class TracingCachePool implements CacheItemPoolInterface
 
     public function save(CacheItemInterface $item): bool
     {
-        $span = $this->tracing->startSpan(sprintf('CACHE SET %s', $this->poolName), 'cache');
+        $span = $this->tracing->startSpan(sprintf('cache.set %s', $item->getKey()), 'cache');
+        $span->setOrigin('auto.cache');
         $span->setAttribute('cache.system', $this->poolName);
         $span->setAttribute('cache.operation', 'set');
         $span->setAttribute('cache.key', $this->sanitizeKey($item->getKey()));
+        if ($this->poolName !== 'cache') {
+            $span->setAttribute('cache.namespace', $this->poolName);
+        }
+        // Capture item size before save
+        $span->setAttribute('cache.item_size', $this->getCacheItemSize($item->get()));
 
         try {
             $result = $this->pool->save($item);
@@ -257,10 +291,16 @@ final class TracingCachePool implements CacheItemPoolInterface
 
     public function saveDeferred(CacheItemInterface $item): bool
     {
-        $span = $this->tracing->startSpan(sprintf('CACHE SET_DEFERRED %s', $this->poolName), 'cache');
+        $span = $this->tracing->startSpan(sprintf('cache.set_deferred %s', $item->getKey()), 'cache');
+        $span->setOrigin('auto.cache');
         $span->setAttribute('cache.system', $this->poolName);
         $span->setAttribute('cache.operation', 'set_deferred');
         $span->setAttribute('cache.key', $this->sanitizeKey($item->getKey()));
+        if ($this->poolName !== 'cache') {
+            $span->setAttribute('cache.namespace', $this->poolName);
+        }
+        // Capture item size before save
+        $span->setAttribute('cache.item_size', $this->getCacheItemSize($item->get()));
 
         try {
             $result = $this->pool->saveDeferred($item);
@@ -281,9 +321,13 @@ final class TracingCachePool implements CacheItemPoolInterface
 
     public function commit(): bool
     {
-        $span = $this->tracing->startSpan(sprintf('CACHE COMMIT %s', $this->poolName), 'cache');
+        $span = $this->tracing->startSpan(sprintf('cache.commit %s', $this->poolName), 'cache');
+        $span->setOrigin('auto.cache');
         $span->setAttribute('cache.system', $this->poolName);
         $span->setAttribute('cache.operation', 'commit');
+        if ($this->poolName !== 'cache') {
+            $span->setAttribute('cache.namespace', $this->poolName);
+        }
 
         try {
             $result = $this->pool->commit();
@@ -323,5 +367,49 @@ final class TracingCachePool implements CacheItemPoolInterface
     {
         // Truncate very long keys
         return strlen($key) > 100 ? substr($key, 0, 100) . '...' : $key;
+    }
+
+    /**
+     * Get the approximate size of a cached value in bytes.
+     * 
+     * Based on Sentry's approach - provides insight into cache memory usage.
+     *
+     * @param mixed $value The cached value
+     * @return int|null Size in bytes or null if cannot be determined
+     */
+    private function getCacheItemSize(mixed $value): ?int
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        if (is_string($value)) {
+            return strlen($value);
+        }
+
+        if (is_array($value) || is_object($value)) {
+            try {
+                $serialized = serialize($value);
+                return strlen($serialized);
+            } catch (\Throwable $e) {
+                // Serialization failed, try JSON
+                try {
+                    $json = json_encode($value);
+                    return $json !== false ? strlen($json) : null;
+                } catch (\Throwable $e) {
+                    return null;
+                }
+            }
+        }
+
+        if (is_bool($value)) {
+            return 1;
+        }
+
+        if (is_int($value) || is_float($value)) {
+            return 8; // Approximate size for numeric types
+        }
+
+        return null;
     }
 }
